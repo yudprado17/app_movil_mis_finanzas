@@ -60,6 +60,6 @@ A continuación se muestran las capturas de la aplicación en funcionamiento:
 
 | Pantalla Principal (Historial y Balance) | Formulario de Registro (Creación/Edición) |
 | :---: | :---: |
-| ![Historial de Transacciones](docs/screenshots/lista_transacciones.png) | ![Registro de Transacción](docs/screenshots/formulario_registro.png) |
+| ![Historial de Transacciones](docs/screenshots/lista_transacciones.jpg) | ![Registro de Transacción](docs/screenshots/formulario_registro.jpg) |
 
 *(Nota: Las imágenes de las capturas se guardan en la carpeta `docs/screenshots/` del repositorio).*
