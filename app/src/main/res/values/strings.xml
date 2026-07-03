@@ -1,0 +1,47 @@
+<resources>
+    <string name="app_name">Mis Finanzas</string>
+    
+    <!-- General Actions -->
+    <string name="action_save">Guardar</string>
+    <string name="action_cancel">Cancelar</string>
+    <string name="action_delete">Eliminar</string>
+    <string name="action_edit">Editar</string>
+    
+    <!-- Main Screen -->
+    <string name="title_balance">Balance General</string>
+    <string name="title_incomes">Ingresos</string>
+    <string name="title_expenses">Gastos</string>
+    <string name="empty_transactions">No hay transacciones registradas.\nPresiona el botón + para empezar.</string>
+    <string name="hint_search">Buscar transacción...</string>
+    
+    <!-- Form Screen -->
+    <string name="title_new_transaction">Nueva Transacción</string>
+    <string name="title_edit_transaction">Editar Transacción</string>
+    
+    <!-- Form Labels and Hints -->
+    <string name="label_concept">Concepto</string>
+    <string name="hint_concept">Ej. Almuerzo, Salario, Internet</string>
+    <string name="label_amount">Monto ($)</string>
+    <string name="hint_amount">Ej. 15000.00</string>
+    <string name="label_type">Tipo de Transacción</string>
+    <string name="label_category">Categoría</string>
+    <string name="label_date">Fecha</string>
+    
+    <!-- Validation Errors -->
+    <string name="error_empty_concept">Por favor ingresa un concepto</string>
+    <string name="error_invalid_amount">Ingresa un monto válido mayor a 0</string>
+    <string name="error_empty_date">Selecciona una fecha</string>
+    <string name="confirm_delete">¿Estás seguro de que deseas eliminar esta transacción?</string>
+    
+    <!-- Categories Array -->
+    <string-array name="categories">
+        <item>Alimentación</item>
+        <item>Transporte</item>
+        <item>Servicios Públicos</item>
+        <item>Entretenimiento</item>
+        <item>Salario</item>
+        <item>Educación</item>
+        <item>Salud</item>
+        <item>Otros</item>
+    </string-array>
+</resources>
