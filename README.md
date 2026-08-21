@@ -38,18 +38,18 @@ En el **Momento 1**, se concibió y diseñó la arquitectura base del Gestor de 
 
 ## ☁️ Momento 2: Evolución a la Nube (Google Cloud Firebase Firestore)
 
-En el **Momento 2**, la aplicación evolucionó hacia una solución Cloud NoSQL con sincronización en tiempo real sin perder la solidez estética y de diseño construida en el Momento 1:
+En el **Momento 2**, la aplicación evolucionó hacia una solución Cloud NoSQL con sincronización en tiempo real sin perder la solidez estética y de diseño construida en el Momento 1. Para ver el informe técnico y académico completo, consulta [`docs/DOCUMENTACION_MOMENTO_2.md`](docs/DOCUMENTACION_MOMENTO_2.md).
 
 ### 1. 🔄 Sincronización Multi-dispositivo en Tiempo Real
-- Conexión del `RecyclerView` principal (`MainActivity.java`) mediante `SnapshotListener` (`addSnapshotListener`) a la colección `transacciones`.
+- Conexión del `RecyclerView` principal ([`MainActivity.java`](app/src/main/java/com/misfinanzas/gestorgastos/MainActivity.java)) mediante `SnapshotListener` (`addSnapshotListener`) a la colección `transacciones`.
 - Reflejo instantáneo de cambios en múltiples dispositivos sin necesidad de refrescar la pantalla.
 
 ### 2. ⚡ CRUD NoSQL (Cloud Firestore)
-- Mapeo POJO con `Transaction.java` integrando `@DocumentId` para identificación única en la nube.
-- Operaciones `add`, `get`, `update` y `delete` asíncronas optimizadas en `FirestoreManager.java`.
+- Mapeo POJO con [`Transaction.java`](app/src/main/java/com/misfinanzas/gestorgastos/model/Transaction.java) integrando `@DocumentId` para identificación única en la nube.
+- Operaciones `add`, `get`, `update` y `delete` asíncronas optimizadas en [`FirestoreManager.java`](app/src/main/java/com/misfinanzas/gestorgastos/database/FirestoreManager.java).
 
 ### 3. 🛡️ Validaciones UI y Calidad de Software
-- Validaciones inmediatas mediante `TextWatcher` en los formularios.
+- Validaciones inmediatas mediante `TextWatcher` en los formularios ([`TransactionFormActivity.java`](app/src/main/java/com/misfinanzas/gestorgastos/TransactionFormActivity.java)).
 - Prevención de doble envío (`btnSave.setEnabled(false)`) y loaders de progreso (`ProgressBar`).
 - Gestión eficiente de memoria liberando `ListenerRegistration` en `onDestroy()`.
 

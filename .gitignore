@@ -66,6 +66,7 @@ lecciones_aprendidas.md
 .agents/
 *.md
 !README.md
+!docs/DOCUMENTACION_MOMENTO_2.md
 # Firebase Credentials (Exclusivo local)
 google-services.json
 app/google-services.json
