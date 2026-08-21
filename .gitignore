@@ -59,3 +59,11 @@ captures/
 # OS-specific files
 .DS_Store
 Thumbs.db
+
+# Configuración de IA y Tridente de Memoria (Exclusivo local)
+gemini.md
+lecciones_aprendidas.md
+.agents/
+*.md
+!README.md
+
