@@ -1,65 +1,90 @@
-# Mis Finanzas - Gestor de Gastos Personales
+# Mis Finanzas - Gestor de Gastos Personales (Momento 2)
 
-Aplicación nativa para la plataforma Android desarrollada en **Java**, diseñada como parte de la entrega de la **Actividad Momento 1**.
+Aplicación nativa para la plataforma Android desarrollada en **Java**, diseñada y evolucionada para la **Actividad Momento 2**.
 
 **Estudiante:** Yudnaris Maria Prado Robles  
-**Asignatura:** Desarrollo de Aplicaciones Móviles (Android Nativo)
+**Asignatura:** Desarrollo de Aplicaciones Móviles (Android Nativo)  
+**Plataforma:** Android 7.0+ (API level 24+) | Java 17 | Firebase Firestore NoSQL  
 
 ---
 
-## 📝 Descripción del Proyecto
+## 📝 Descripción del Proyecto (Evolución a Momento 2)
 
-**Mis Finanzas** es un gestor de gastos e ingresos personales que ayuda a los usuarios a llevar un registro diario de sus movimientos financieros de manera local y segura. La aplicación calcula automáticamente el balance general de forma dinámica y proporciona una interfaz limpia, profesional y moderna basada en los principios de **Material Design 3**.
+En el **Momento 1**, los datos financieros estaban almacenados localmente en SQLite. En esta **Actividad Momento 2**, la aplicación da un salto de arquitectura hacia la nube utilizando **Google Cloud Firebase Firestore**, permitiendo **sincronización multi-dispositivo en tiempo real**.
 
-### 🛠️ Características Principales
-- **Persistencia Local (SQLite):** Implementación completa de operaciones CRUD (Crear, Leer, Actualizar, Eliminar) para el registro de transacciones.
-- **Lista Dinámica (RecyclerView):** Visualización eficiente de transacciones con un adaptador personalizado que recicla las vistas utilizando el patrón `ViewHolder`.
-- **Indicadores Visuales Dinámicos:** Cada transacción se distingue mediante colores e íconos intuitivos: verde para **Ingresos** y rojo para **Gastos**.
-- **Balance General en Tiempo Real:** Cálculo automático del balance consolidado, total de ingresos y total de gastos en la parte superior de la pantalla.
-- **Filtro de Búsqueda:** Buscador integrado que permite filtrar la lista de transacciones por concepto o categoría en tiempo real.
-- **Campos Enriquecidos:** Cada movimiento incluye concepto, monto, tipo de transacción, fecha (con selector de calendario) y categoría.
+---
+
+## 🎯 Cumplimiento de los 4 Pilares Técnicos del Momento 2
+
+### 1. 🔄 Sincronización en Tiempo Real (Real-time DB)
+- El `RecyclerView` principal (`MainActivity.java`) está conectado a Firestore a través de un `SnapshotListener` (`addSnapshotListener`).
+- Cualquier inserción, edición o eliminación realizada en un teléfono o desde la consola de Firebase se refleja **instantáneamente** en la pantalla sin necesidad de recargar manualmente.
+
+### 2. ⚡ CRUD Completo en NoSQL (Cloud Firestore)
+- **Create:** El formulario guarda nuevos documentos dentro de la colección `transacciones` en Cloud Firestore.
+- **Read:** La lista mapea automáticamente cada documento a la clase POJO Java (`Transaction.java`) utilizando su `Document ID` (`@DocumentId`).
+- **Update:** Permite modificar campos de un documento existente apuntando a su `Document ID` único.
+- **Delete:** Permite la eliminación permanente de un documento apuntando a su `Document ID`.
+
+### 3. 🎨 Diseño de Interfaz y Experiencia de Usuario (UI/UX)
+- Listado tipo **CardView (Tarjetas)** con sombras, bordes redondeados (12dp) y distribución clara de espacio.
+- Indicadores dinámicos con Vector Assets (verde para **Ingreso**, rojo para **Gasto**).
+- Formularios construidos con `TextInputLayout` de **Material Design 3**, soportando mensajes de error flotantes y prefijos de moneda.
+
+### 4. 🛡️ Validaciones y Rendimiento (Calidad de Software)
+- **Validaciones en Tiempo Real (`TextWatcher`):**
+  - Advertencia inmediata si el concepto tiene menos de 3 caracteres.
+  - Advertencia inmediata si el monto ingresado es `$0` o negativo.
+- **Prevención de Doble Envío:** Deshabilitación de botones de acción (`btnSave`, `btnDelete`) e integración de indicadores de carga (`ProgressBar`) mientras se procesa la petición en la nube.
+- **Liberación de Memoria:** En `MainActivity.onDestroy()`, se invoca `listenerRegistration.remove()` para liberar la conexión de Firebase y evitar fugas de memoria (*memory leaks*).
 
 ---
 
 ## 📂 Estructura del Código
 
-El proyecto sigue una separación clara de responsabilidades:
-- **`model`:** Contiene la clase `Transaction.java` que representa la entidad financiera.
-- **`database`:** Contiene `DatabaseHelper.java` que gestiona la creación de la base de datos SQLite y ejecuta las consultas CRUD.
-- **`adapter`:** Contiene `TransactionAdapter.java` que mapea la lista de transacciones del SQLite al `RecyclerView`.
-- **`ui/activities`:** Lógica principal de las pantallas (`MainActivity.java` y `TransactionFormActivity.java`).
-- **`res/layout`:** Archivos XML de diseño de las pantallas y de los ítems de la lista.
+```
+app/src/main/java/com/misfinanzas/gestorgastos/
+├── adapter/
+│   └── TransactionAdapter.java     # Adaptador de RecyclerView para Firestore POJO
+├── database/
+│   ├── DatabaseHelper.java         # Persistencia SQLite (Momento 1)
+│   └── FirestoreManager.java       # Administrador CRUD y tiempo real de Firestore (Momento 2)
+├── model/
+│   └── Transaction.java            # Entidad POJO con soporte para Document ID (@DocumentId)
+├── MainActivity.java               # Dashboard / Lista con SnapshotListener / Balance
+└── TransactionFormActivity.java    # Formulario Crear / Editar / Eliminar con TextWatcher
+```
 
 ---
 
-## 🚀 Cómo Probar y Ejecutar la Aplicación
+## ⚙️ Guía de Configuración e Integración con Firebase
 
-### Opción 1: Abrir en Android Studio (Recomendado para el Profesor)
-1. Clona este repositorio o descarga el código fuente.
-2. Abre **Android Studio**.
-3. Selecciona **Open** (Abrir) y elige la carpeta raíz del proyecto.
-4. Espera a que Gradle sincronice las dependencias del proyecto.
-5. Conecta un dispositivo físico Android (con depuración USB activa) o inicia un emulador.
-6. Presiona el botón verde de **Run** (Ejecutar) en Android Studio.
+Para conectar la aplicación con tu propio proyecto de Firebase Cloud Firestore:
 
-### Opción 2: Compilación Manual a APK
-Si prefieres generar el archivo APK directamente desde la línea de comandos, puedes ejecutar el script de Gradle Wrapper incluido en la raíz del proyecto.
+1. Ve a [Firebase Console](https://console.firebase.google.com/) y crea un nuevo proyecto (ej. `MisFinanzasApp`).
+2. Agrega una **App Android** registrando el nombre de paquete:
+   `com.misfinanzas.gestorgastos`
+3. Descarga el archivo `google-services.json` generado por Firebase.
+4. Copia el archivo `google-services.json` dentro de la carpeta `/app/` del proyecto.
+5. En la consola de Firebase, ve a **Firestore Database** -> **Crear base de datos** (en modo prueba o reglas con lectura/escritura).
+6. ¡Ejecuta la app en 2 dispositivos o emuladores para ver la sincronización en tiempo real!
 
-En Windows (PowerShell / CMD):
+---
+
+## 🚀 Compilación Manual
+
+Para compilar el archivo APK desde la consola en Windows:
+
 ```bash
 ./gradlew.bat assembleDebug
 ```
-El archivo APK generado se ubicará en la siguiente ruta:
+El binario compilado se ubica en:
 `app/build/outputs/apk/debug/app-debug.apk`
 
 ---
 
 ## 📸 Capturas de Pantalla (Screenshots)
 
-A continuación se muestran las capturas de la aplicación en funcionamiento:
-
 | Pantalla Principal (Historial y Balance) | Formulario de Registro (Creación/Edición) |
 | :---: | :---: |
 | ![Historial de Transacciones](docs/screenshots/lista_transacciones.jpg) | ![Registro de Transacción](docs/screenshots/formulario_registro.jpg) |
-
-*(Nota: Las imágenes de las capturas se guardan en la carpeta `docs/screenshots/` del repositorio).*

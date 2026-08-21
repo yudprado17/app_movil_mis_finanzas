@@ -91,15 +91,17 @@ public class TransactionAdapter extends RecyclerView.Adapter<TransactionAdapter.
             
             // Formatear Fecha
             String formattedDate = transaction.getFecha();
-            try {
-                Date date = inputDateFormat.parse(transaction.getFecha());
-                if (date != null) {
-                    formattedDate = outputDateFormat.format(date);
+            if (formattedDate != null) {
+                try {
+                    Date date = inputDateFormat.parse(formattedDate);
+                    if (date != null) {
+                        formattedDate = outputDateFormat.format(date);
+                    }
+                } catch (ParseException e) {
+                    e.printStackTrace();
                 }
-            } catch (ParseException e) {
-                e.printStackTrace();
             }
-            tvDate.setText(formattedDate);
+            tvDate.setText(formattedDate != null ? formattedDate : "");
 
             // Formatear Monto y estilo dinámico
             double amount = transaction.getMonto();

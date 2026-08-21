@@ -1,18 +1,23 @@
 package com.misfinanzas.gestorgastos.model;
 
+import com.google.firebase.firestore.DocumentId;
+import com.google.firebase.firestore.Exclude;
+
 public class Transaction {
-    private int id;
+
+    @DocumentId
+    private String id;
     private String concepto;
     private double monto;
     private String tipo; // "Ingreso" or "Gasto"
     private String fecha; // Formato: YYYY-MM-DD
     private String categoria;
 
-    // Constructor vacío
+    // Constructor vacío requerido para la deserialización automática de Firebase Firestore POJO
     public Transaction() {
     }
 
-    // Constructor sin ID (útil para insertar nuevos registros)
+    // Constructor sin ID (útil para crear nuevos documentos en Firestore)
     public Transaction(String concepto, double monto, String tipo, String fecha, String categoria) {
         this.concepto = concepto;
         this.monto = monto;
@@ -21,8 +26,8 @@ public class Transaction {
         this.categoria = categoria;
     }
 
-    // Constructor completo con ID (para leer y actualizar registros existentes)
-    public Transaction(int id, String concepto, double monto, String tipo, String fecha, String categoria) {
+    // Constructor completo con ID
+    public Transaction(String id, String concepto, double monto, String tipo, String fecha, String categoria) {
         this.id = id;
         this.concepto = concepto;
         this.monto = monto;
@@ -32,11 +37,11 @@ public class Transaction {
     }
 
     // Getters y Setters
-    public int getId() {
+    public String getId() {
         return id;
     }
 
-    public void setId(int id) {
+    public void setId(String id) {
         this.id = id;
     }
 

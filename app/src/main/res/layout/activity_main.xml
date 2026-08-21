@@ -207,11 +207,19 @@
                 android:textStyle="bold" />
         </LinearLayout>
 
-        <!-- List / Empty Container -->
+        <!-- List / Empty Container / Progress -->
         <FrameLayout
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:paddingHorizontal="12dp">
+
+            <!-- Loading Spinner -->
+            <ProgressBar
+                android:id="@+id/progress_bar_loading"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:visibility="gone" />
 
             <!-- RecyclerView -->
             <androidx.recyclerview.widget.RecyclerView
@@ -250,6 +258,7 @@
             </LinearLayout>
 
         </FrameLayout>
+
 
     </LinearLayout>
 

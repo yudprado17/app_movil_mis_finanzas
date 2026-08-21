@@ -4,22 +4,30 @@ import android.app.AlertDialog;
 import android.app.DatePickerDialog;
 import android.content.DialogInterface;
 import android.os.Bundle;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.DatePicker;
 import android.widget.ImageButton;
+import android.widget.ProgressBar;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 
+import com.google.android.gms.tasks.OnFailureListener;
+import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
-import com.misfinanzas.gestorgastos.database.DatabaseHelper;
+import com.google.firebase.firestore.DocumentReference;
+import com.google.firebase.firestore.DocumentSnapshot;
+import com.misfinanzas.gestorgastos.database.FirestoreManager;
 import com.misfinanzas.gestorgastos.model.Transaction;
 
 import java.text.SimpleDateFormat;
@@ -35,12 +43,13 @@ public class TransactionFormActivity extends AppCompatActivity {
     private TextInputLayout tilConcept, tilAmount, tilDate;
     private TextInputEditText tietConcept, tietAmount, tietDate;
     private Spinner spinnerCategory;
+    private ProgressBar progressBarForm;
     private Button btnSave, btnDelete;
 
-    private DatabaseHelper dbHelper;
+    private FirestoreManager firestoreManager;
     private boolean isEditMode = false;
-    private int transactionId = -1;
-    
+    private String documentId = null;
+
     private final Calendar calendar = Calendar.getInstance();
     private final SimpleDateFormat dateFormatter = new SimpleDateFormat("yyyy-MM-dd", Locale.US);
 
@@ -49,7 +58,8 @@ public class TransactionFormActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_transaction_form);
 
-        dbHelper = new DatabaseHelper(this);
+        // Inicializar Firestore Manager
+        firestoreManager = new FirestoreManager();
 
         // Inicializar Vistas
         btnBack = findViewById(R.id.btn_back);
@@ -64,6 +74,7 @@ public class TransactionFormActivity extends AppCompatActivity {
         tilDate = findViewById(R.id.til_date);
         tietDate = findViewById(R.id.tiet_date);
         spinnerCategory = findViewById(R.id.spinner_category);
+        progressBarForm = findViewById(R.id.progress_bar_form);
         btnSave = findViewById(R.id.btn_save);
         btnDelete = findViewById(R.id.btn_delete);
 
@@ -89,10 +100,15 @@ public class TransactionFormActivity extends AppCompatActivity {
             }
         });
 
+        // =========================================================================
+        // PILAR 4: Validaciones en Tiempo Real (TextWatcher)
+        // =========================================================================
+        setupRealtimeValidations();
+
         // Determinar si es Edición o Creación
-        if (getIntent().hasExtra("TRANSACTION_ID")) {
+        if (getIntent().hasExtra("DOCUMENT_ID")) {
             isEditMode = true;
-            transactionId = getIntent().getIntExtra("TRANSACTION_ID", -1);
+            documentId = getIntent().getStringExtra("DOCUMENT_ID");
             loadTransactionData();
         } else {
             // Modo Creación: Establecer fecha actual por defecto
@@ -113,6 +129,57 @@ public class TransactionFormActivity extends AppCompatActivity {
             public void onClick(View v) {
                 confirmDelete();
             }
+        });
+    }
+
+    private void setupRealtimeValidations() {
+        // Validación en tiempo real del Concepto
+        tietConcept.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                String text = s.toString().trim();
+                if (text.isEmpty()) {
+                    tilConcept.setError("El concepto no puede estar vacío");
+                } else if (text.length() < 3) {
+                    tilConcept.setError("El concepto debe tener al menos 3 caracteres");
+                } else {
+                    tilConcept.setError(null);
+                }
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {}
+        });
+
+        // Validación en tiempo real del Monto (Advirtiendo si es $0 o inválido)
+        tietAmount.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                String text = s.toString().trim();
+                if (text.isEmpty()) {
+                    tilAmount.setError("El monto es requerido");
+                } else {
+                    try {
+                        double val = Double.parseDouble(text);
+                        if (val <= 0) {
+                            tilAmount.setError("Advertencia: El monto debe ser mayor a $0");
+                        } else {
+                            tilAmount.setError(null);
+                        }
+                    } catch (NumberFormatException e) {
+                        tilAmount.setError("Formato numérico inválido");
+                    }
+                }
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {}
         });
     }
 
@@ -138,42 +205,60 @@ public class TransactionFormActivity extends AppCompatActivity {
     private void loadTransactionData() {
         tvFormTitle.setText(R.string.title_edit_transaction);
         btnDelete.setVisibility(View.VISIBLE);
+        setLoadingState(true);
 
-        Transaction transaction = dbHelper.getTransactionById(transactionId);
-        if (transaction != null) {
-            tietConcept.setText(transaction.getConcepto());
-            tietAmount.setText(String.valueOf(transaction.getMonto()));
-            tietDate.setText(transaction.getFecha());
+        firestoreManager.getTransactionById(documentId, new OnSuccessListener<DocumentSnapshot>() {
+            @Override
+            public void onSuccess(DocumentSnapshot doc) {
+                setLoadingState(false);
+                if (doc.exists()) {
+                    Transaction transaction = doc.toObject(Transaction.class);
+                    if (transaction != null) {
+                        tietConcept.setText(transaction.getConcepto());
+                        tietAmount.setText(String.valueOf(transaction.getMonto()));
+                        tietDate.setText(transaction.getFecha());
 
-            // Seleccionar tipo
-            if ("Ingreso".equalsIgnoreCase(transaction.getTipo())) {
-                rbIncome.setChecked(true);
-            } else {
-                rbExpense.setChecked(true);
-            }
+                        // Seleccionar tipo
+                        if ("Ingreso".equalsIgnoreCase(transaction.getTipo())) {
+                            rbIncome.setChecked(true);
+                        } else {
+                            rbExpense.setChecked(true);
+                        }
 
-            // Seleccionar categoría
-            ArrayAdapter<CharSequence> adapter = (ArrayAdapter<CharSequence>) spinnerCategory.getAdapter();
-            if (adapter != null) {
-                int position = adapter.getPosition(transaction.getCategoria());
-                if (position >= 0) {
-                    spinnerCategory.setSelection(position);
+                        // Seleccionar categoría
+                        ArrayAdapter<CharSequence> adapter = (ArrayAdapter<CharSequence>) spinnerCategory.getAdapter();
+                        if (adapter != null) {
+                            int position = adapter.getPosition(transaction.getCategoria());
+                            if (position >= 0) {
+                                spinnerCategory.setSelection(position);
+                            }
+                        }
+
+                        // Actualizar calendario con la fecha cargada
+                        try {
+                            if (transaction.getFecha() != null) {
+                                java.util.Date date = dateFormatter.parse(transaction.getFecha());
+                                if (date != null) {
+                                    calendar.setTime(date);
+                                }
+                            }
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    }
+                } else {
+                    Toast.makeText(TransactionFormActivity.this, "No se encontró el documento en Firestore", Toast.LENGTH_SHORT).show();
+                    finish();
                 }
             }
-
-            // Actualizar calendario con la fecha cargada
-            try {
-                java.util.Date date = dateFormatter.parse(transaction.getFecha());
-                if (date != null) {
-                    calendar.setTime(date);
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
+        }, new OnFailureListener() {
+            @Override
+            public void onFailure(@NonNull Exception e) {
+                setLoadingState(false);
+                Toast.makeText(TransactionFormActivity.this, "Error al cargar documento: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                finish();
             }
-        } else {
-            Toast.makeText(this, "Error al cargar la transacción", Toast.LENGTH_SHORT).show();
-            finish();
-        }
+        });
     }
 
     private void saveTransaction() {
@@ -183,11 +268,11 @@ public class TransactionFormActivity extends AppCompatActivity {
         String type = rbIncome.isChecked() ? "Ingreso" : "Gasto";
         String category = spinnerCategory.getSelectedItem().toString();
 
-        // Validaciones
+        // Validaciones estrictas previa inserción/modificación
         boolean isValid = true;
 
-        if (concept.isEmpty()) {
-            tilConcept.setError(getString(R.string.error_empty_concept));
+        if (concept.isEmpty() || concept.length() < 3) {
+            tilConcept.setError("El concepto debe tener al menos 3 caracteres");
             isValid = false;
         } else {
             tilConcept.setError(null);
@@ -195,19 +280,19 @@ public class TransactionFormActivity extends AppCompatActivity {
 
         double amount = 0;
         if (amountStr.isEmpty()) {
-            tilAmount.setError(getString(R.string.error_invalid_amount));
+            tilAmount.setError("El monto es requerido");
             isValid = false;
         } else {
             try {
                 amount = Double.parseDouble(amountStr);
                 if (amount <= 0) {
-                    tilAmount.setError(getString(R.string.error_invalid_amount));
+                    tilAmount.setError("El monto debe ser un número positivo mayor a $0");
                     isValid = false;
                 } else {
                     tilAmount.setError(null);
                 }
             } catch (NumberFormatException e) {
-                tilAmount.setError(getString(R.string.error_invalid_amount));
+                tilAmount.setError("Formato numérico inválido");
                 isValid = false;
             }
         }
@@ -221,24 +306,41 @@ public class TransactionFormActivity extends AppCompatActivity {
 
         if (!isValid) return;
 
+        // =========================================================================
+        // PILAR 4: Prevenir Doble Envío (Deshabilitar botones durante guardado)
+        // =========================================================================
+        setLoadingState(true);
+
         if (isEditMode) {
-            Transaction transaction = new Transaction(transactionId, concept, amount, type, date, category);
-            int rowsAffected = dbHelper.updateTransaction(transaction);
-            if (rowsAffected > 0) {
-                Toast.makeText(this, "Transacción actualizada con éxito", Toast.LENGTH_SHORT).show();
-                finish();
-            } else {
-                Toast.makeText(this, "Error al actualizar la transacción", Toast.LENGTH_SHORT).show();
-            }
+            Transaction transaction = new Transaction(documentId, concept, amount, type, date, category);
+            firestoreManager.updateTransaction(documentId, transaction, new OnSuccessListener<Void>() {
+                @Override
+                public void onSuccess(Void unused) {
+                    Toast.makeText(TransactionFormActivity.this, "Transacción actualizada en la nube", Toast.LENGTH_SHORT).show();
+                    finish();
+                }
+            }, new OnFailureListener() {
+                @Override
+                public void onFailure(@NonNull Exception e) {
+                    setLoadingState(false);
+                    Toast.makeText(TransactionFormActivity.this, "Error al actualizar: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                }
+            });
         } else {
             Transaction transaction = new Transaction(concept, amount, type, date, category);
-            long id = dbHelper.insertTransaction(transaction);
-            if (id > 0) {
-                Toast.makeText(this, "Transacción registrada con éxito", Toast.LENGTH_SHORT).show();
-                finish();
-            } else {
-                Toast.makeText(this, "Error al registrar la transacción", Toast.LENGTH_SHORT).show();
-            }
+            firestoreManager.addTransaction(transaction, new OnSuccessListener<DocumentReference>() {
+                @Override
+                public void onSuccess(DocumentReference documentReference) {
+                    Toast.makeText(TransactionFormActivity.this, "Transacción registrada en tiempo real", Toast.LENGTH_SHORT).show();
+                    finish();
+                }
+            }, new OnFailureListener() {
+                @Override
+                public void onFailure(@NonNull Exception e) {
+                    setLoadingState(false);
+                    Toast.makeText(TransactionFormActivity.this, "Error al guardar: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                }
+            });
         }
     }
 
@@ -257,12 +359,35 @@ public class TransactionFormActivity extends AppCompatActivity {
     }
 
     private void deleteTransaction() {
-        int rowsDeleted = dbHelper.deleteTransaction(transactionId);
-        if (rowsDeleted > 0) {
-            Toast.makeText(this, "Transacción eliminada con éxito", Toast.LENGTH_SHORT).show();
-            finish();
+        setLoadingState(true);
+        firestoreManager.deleteTransaction(documentId, new OnSuccessListener<Void>() {
+            @Override
+            public void onSuccess(Void unused) {
+                Toast.makeText(TransactionFormActivity.this, "Transacción eliminada de Firestore", Toast.LENGTH_SHORT).show();
+                finish();
+            }
+        }, new OnFailureListener() {
+            @Override
+            public void onFailure(@NonNull Exception e) {
+                setLoadingState(false);
+                Toast.makeText(TransactionFormActivity.this, "Error al eliminar: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            }
+        });
+    }
+
+    private void setLoadingState(boolean isLoading) {
+        if (isLoading) {
+            btnSave.setEnabled(false);
+            btnDelete.setEnabled(false);
+            if (progressBarForm != null) {
+                progressBarForm.setVisibility(View.VISIBLE);
+            }
         } else {
-            Toast.makeText(this, "Error al eliminar la transacción", Toast.LENGTH_SHORT).show();
+            btnSave.setEnabled(true);
+            btnDelete.setEnabled(true);
+            if (progressBarForm != null) {
+                progressBarForm.setVisibility(View.GONE);
+            }
         }
     }
 }
