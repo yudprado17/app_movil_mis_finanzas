@@ -181,6 +181,16 @@ El instalador APK resultante se genera en:
 
 ---
 
+## 📸 Capturas de Pantalla (Momento 3, en un Motorola moto g55)
+
+| Administrador: ve todo y el balance general | Usuario estándar: solo sus movimientos |
+| :---: | :---: |
+| <img src="docs/screenshots/m3_admin_lista.png" width="260"> | <img src="docs/screenshots/m3_usuario_estandar.png" width="260"> |
+
+| Mapa con pines (concepto, valor y dueño) | Vista horizontal (layout-land) |
+| :---: | :---: |
+| <img src="docs/screenshots/m3_mapa_pines.png" width="260"> | <img src="docs/screenshots/m3_horizontal.png" width="420"> |
+
 ## 📸 Capturas de Pantalla (Diseño UI Momento 1 & 2)
 
 | Pantalla Principal (Historial y Balance) | Formulario de Registro (Creación/Edición) |

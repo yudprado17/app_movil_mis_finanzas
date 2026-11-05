@@ -60,7 +60,8 @@ captures/
 .DS_Store
 Thumbs.db
 
-# Configuración de IA y Tridente de Memoria (Exclusivo local)
+# Notas personales (solo locales)
+capturas/
 gemini.md
 lecciones_aprendidas.md
 .agents/
