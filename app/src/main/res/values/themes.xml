@@ -1,6 +1,6 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Base application theme. -->
-    <style name="Theme.MisFinanzas" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+    <style name="Theme.MisFinanzas" parent="Theme.MaterialComponents.Light.NoActionBar">
         <!-- Primary brand color. -->
         <item name="colorPrimary">@color/primary</item>
         <item name="colorPrimaryVariant">@color/primary_variant</item>
@@ -20,5 +20,27 @@
         <!-- Customize text colors -->
         <item name="android:textColorPrimary">@color/text_primary</item>
         <item name="android:textColorSecondary">@color/text_secondary</item>
+
+        <!-- La app usa siempre su paleta clara: evita que el modo oscuro del celular
+             oscurezca diálogos y textos dejándolos con mal contraste. -->
+        <item name="android:forceDarkAllowed" tools:targetApi="q">false</item>
+        <item name="alertDialogTheme">@style/ThemeOverlay.MisFinanzas.Dialog</item>
+        <item name="android:alertDialogTheme">@style/ThemeOverlay.MisFinanzas.Dialog</item>
+        <item name="materialAlertDialogTheme">@style/ThemeOverlay.MisFinanzas.Dialog</item>
+    </style>
+
+    <!-- Diálogos (p. ej. "Cerrar sesión"): fondo blanco, texto oscuro y botones de la marca -->
+    <style name="ThemeOverlay.MisFinanzas.Dialog" parent="ThemeOverlay.MaterialComponents.Dialog.Alert">
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorAccent">@color/primary</item>
+        <item name="android:background">@color/surface</item>
+        <item name="android:textColorPrimary">@color/text_primary</item>
+        <item name="android:textColorSecondary">@color/text_secondary</item>
+        <item name="buttonBarPositiveButtonStyle">@style/MisFinanzas.DialogButton</item>
+        <item name="buttonBarNegativeButtonStyle">@style/MisFinanzas.DialogButton</item>
+    </style>
+
+    <style name="MisFinanzas.DialogButton" parent="Widget.MaterialComponents.Button.TextButton.Dialog">
+        <item name="android:textColor">@color/primary</item>
     </style>
 </resources>

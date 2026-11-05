@@ -148,6 +148,10 @@ public class MainActivity extends AppCompatActivity implements TransactionAdapte
         tvUserName.setText(session.getName());
         tvUserRole.setText(Usuario.roleLabel(session.getRole()));
         tvListTitle.setText(session.isAdmin() ? R.string.title_all_transactions : R.string.title_recent_transactions);
+        TextView tvBalanceTitle = findViewById(R.id.tv_balance_title);
+        if (tvBalanceTitle != null) {
+            tvBalanceTitle.setText(session.isAdmin() ? R.string.title_balance_admin : R.string.title_balance_mine);
+        }
         adapter.setShowOwner(session.isAdmin());
     }
 

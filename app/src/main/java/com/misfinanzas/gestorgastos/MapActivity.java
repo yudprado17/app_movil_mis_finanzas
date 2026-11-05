@@ -6,6 +6,9 @@ import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
+import android.graphics.Path;
+import android.graphics.RectF;
+import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.util.Log;
@@ -44,7 +47,8 @@ import java.util.Map;
 
 /**
  * PILAR C: Mapa interactivo con Google Maps SDK.
- *  - Pines personalizados (verde = ingreso, rojo = gasto) donde se crearon las transacciones.
+ *  - Pines personalizados (verde = ingreso, rojo = gasto) donde se crearon las transacciones,
+ *    con una etiqueta siempre visible: concepto, valor y (para el Administrador) el dueño.
  *  - Controles de zoom y alternancia de capas Normal / Satélite.
  *  - Ventana de información (InfoWindow) al tocar cada pin.
  *  - Los pines se actualizan en tiempo real (addSnapshotListener) y respetan el rol.
@@ -65,7 +69,6 @@ public class MapActivity extends AppCompatActivity implements OnMapReadyCallback
 
     private final Map<String, Transaction> markerData = new HashMap<>();
     private final NumberFormat currencyFormatter = NumberFormat.getCurrencyInstance(Locale.US);
-    private BitmapDescriptor incomePin, expensePin;
     private boolean cameraPositioned = false;
 
     @Override
@@ -101,8 +104,6 @@ public class MapActivity extends AppCompatActivity implements OnMapReadyCallback
     @Override
     public void onMapReady(@NonNull GoogleMap googleMap) {
         map = googleMap;
-        incomePin = createPin(R.color.income);
-        expensePin = createPin(R.color.expense);
 
         // Controles de zoom, brújula y barra de herramientas
         map.getUiSettings().setZoomControlsEnabled(true);
@@ -165,7 +166,7 @@ public class MapActivity extends AppCompatActivity implements OnMapReadyCallback
                 Marker marker = map.addMarker(new MarkerOptions()
                         .position(position)
                         .title(t.getConcepto())
-                        .icon(t.isIncome() ? incomePin : expensePin)
+                        .icon(createLabeledPin(t))
                         .anchor(0.5f, 1f));
                 if (marker != null) {
                     markerData.put(marker.getId(), t);
@@ -197,25 +198,103 @@ public class MapActivity extends AppCompatActivity implements OnMapReadyCallback
         tvMapMessage.setVisibility(View.VISIBLE);
     }
 
-    /** Marcador personalizado: el icono de ubicación de la app pintado con el color del tipo. */
-    private BitmapDescriptor createPin(int colorRes) {
+    /**
+     * Marcador personalizado: una etiqueta con el concepto y el valor (y el dueño si
+     * el usuario es Administrador) sobre el icono de ubicación pintado con el color
+     * del tipo (verde = ingreso, rojo = gasto). Así se lee sin tener que tocar el pin.
+     */
+    private BitmapDescriptor createLabeledPin(Transaction t) {
+        int typeColor = ContextCompat.getColor(this, t.isIncome() ? R.color.income : R.color.expense);
         Drawable drawable = ContextCompat.getDrawable(this, R.drawable.ic_location);
         if (drawable == null) return BitmapDescriptorFactory.defaultMarker();
         drawable = DrawableCompat.wrap(drawable.mutate());
-        DrawableCompat.setTint(drawable, ContextCompat.getColor(this, colorRes));
+        DrawableCompat.setTint(drawable, typeColor);
 
-        int size = dp(44);
-        Bitmap bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+        // Textos de la etiqueta
+        String concept = ellipsize(t.getConcepto(), 22);
+        String amount = (t.isIncome() ? "+ " : "- ") + currencyFormatter.format(t.getMonto());
+        String owner = null;
+        if (session.isAdmin() && t.getUserEmail() != null) {
+            String email = t.getUserEmail();
+            int at = email.indexOf('@');
+            owner = ellipsize(at > 0 ? email.substring(0, at) : email, 22);
+        }
+
+        Paint conceptPaint = textPaint(12, ContextCompat.getColor(this, R.color.text_primary), true);
+        Paint amountPaint = textPaint(12, typeColor, true);
+        Paint ownerPaint = textPaint(10, ContextCompat.getColor(this, R.color.text_secondary), false);
+
+        int pad = dp(6);
+        int lineGap = dp(2);
+        float textWidth = Math.max(conceptPaint.measureText(concept), amountPaint.measureText(amount));
+        if (owner != null) textWidth = Math.max(textWidth, ownerPaint.measureText(owner));
+
+        float h1 = lineHeight(conceptPaint), h2 = lineHeight(amountPaint), h3 = owner != null ? lineHeight(ownerPaint) : 0;
+        int bubbleW = (int) Math.ceil(textWidth) + pad * 2;
+        int bubbleH = (int) Math.ceil(h1 + h2 + h3 + lineGap * (owner != null ? 2 : 1)) + pad * 2;
+        int arrow = dp(6);
+        int pinSize = dp(36);
+        int stroke = dp(2);
+
+        int width = Math.max(bubbleW, pinSize) + stroke * 2;
+        int height = bubbleH + arrow + pinSize + stroke * 2;
+        Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(bitmap);
+        float cx = width / 2f;
 
-        // Círculo blanco detrás del agujero del pin para que resalte sobre el mapa
-        Paint white = new Paint(Paint.ANTI_ALIAS_FLAG);
-        white.setColor(0xFFFFFFFF);
-        canvas.drawCircle(size / 2f, size * 9f / 24f, size * 3.2f / 24f, white);
+        // Burbuja blanca con borde del color del tipo y flecha hacia el pin
+        RectF bubble = new RectF(cx - bubbleW / 2f, stroke, cx + bubbleW / 2f, stroke + bubbleH);
+        Path arrowPath = new Path();
+        arrowPath.moveTo(cx - arrow, bubble.bottom - 1);
+        arrowPath.lineTo(cx + arrow, bubble.bottom - 1);
+        arrowPath.lineTo(cx, bubble.bottom + arrow);
+        arrowPath.close();
 
-        drawable.setBounds(0, 0, size, size);
+        Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
+        fill.setColor(0xFFFFFFFF);
+        Paint border = new Paint(Paint.ANTI_ALIAS_FLAG);
+        border.setColor(typeColor);
+        border.setStyle(Paint.Style.STROKE);
+        border.setStrokeWidth(stroke);
+
+        canvas.drawRoundRect(bubble, dp(8), dp(8), border);
+        canvas.drawRoundRect(bubble, dp(8), dp(8), fill);
+        canvas.drawPath(arrowPath, fill);
+
+        float y = bubble.top + pad - conceptPaint.ascent();
+        canvas.drawText(concept, cx, y, conceptPaint);
+        y += conceptPaint.descent() + lineGap - amountPaint.ascent();
+        canvas.drawText(amount, cx, y, amountPaint);
+        if (owner != null) {
+            y += amountPaint.descent() + lineGap - ownerPaint.ascent();
+            canvas.drawText(owner, cx, y, ownerPaint);
+        }
+
+        // Pin con círculo blanco detrás del agujero para que resalte
+        int pinTop = (int) bubble.bottom + arrow;
+        int pinLeft = (int) (cx - pinSize / 2f);
+        canvas.drawCircle(cx, pinTop + pinSize * 9f / 24f, pinSize * 3.2f / 24f, fill);
+        drawable.setBounds(pinLeft, pinTop, pinLeft + pinSize, pinTop + pinSize);
         drawable.draw(canvas);
         return BitmapDescriptorFactory.fromBitmap(bitmap);
+    }
+
+    private Paint textPaint(int sp, int color, boolean bold) {
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        paint.setColor(color);
+        paint.setTextAlign(Paint.Align.CENTER);
+        paint.setTextSize(sp * getResources().getDisplayMetrics().scaledDensity);
+        if (bold) paint.setTypeface(Typeface.DEFAULT_BOLD);
+        return paint;
+    }
+
+    private static float lineHeight(Paint paint) {
+        return paint.descent() - paint.ascent();
+    }
+
+    private static String ellipsize(String text, int max) {
+        if (text == null) return "";
+        return text.length() <= max ? text : text.substring(0, max - 1) + "…";
     }
 
     private int dp(int value) {

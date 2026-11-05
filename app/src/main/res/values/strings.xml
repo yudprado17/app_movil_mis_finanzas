@@ -9,6 +9,8 @@
     
     <!-- Main Screen -->
     <string name="title_balance">Balance General</string>
+    <string name="title_balance_admin">Balance general (todos los usuarios)</string>
+    <string name="title_balance_mine">Mi balance</string>
     <string name="title_incomes">Ingresos</string>
     <string name="title_expenses">Gastos</string>
     <string name="empty_transactions">No hay transacciones registradas.\nPresiona el botón + para empezar.</string>
