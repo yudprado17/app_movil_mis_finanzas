@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Fotos temporales tomadas con la cámara antes de subirlas a Firebase Storage -->
+    <cache-path name="camera_photos" path="camera/" />
+</paths>

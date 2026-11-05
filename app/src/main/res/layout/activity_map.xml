@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/background"
+    android:orientation="vertical"
+    tools:context=".MapActivity">
+
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="64dp"
+        android:background="@color/primary"
+        android:elevation="4dp"
+        android:paddingHorizontal="16dp">
+
+        <ImageButton
+            android:id="@+id/btn_back"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_centerVertical="true"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Atras"
+            android:src="@drawable/ic_arrow_back"
+            app:tint="@color/white" />
+
+        <TextView
+            android:id="@+id/tv_map_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_centerVertical="true"
+            android:layout_marginStart="16dp"
+            android:layout_toEndOf="@id/btn_back"
+            android:text="@string/title_map"
+            android:textColor="@color/white"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+    </RelativeLayout>
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <!-- Google Maps SDK -->
+        <androidx.fragment.app.FragmentContainerView
+            android:id="@+id/map_fragment"
+            android:name="com.google.android.gms.maps.SupportMapFragment"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top"
+            android:orientation="vertical"
+            android:padding="12dp">
+
+            <!-- Alternancia de capas: Normal / Satélite -->
+            <com.google.android.material.button.MaterialButtonToggleGroup
+                android:id="@+id/toggle_map_type"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_search_input"
+                app:checkedButton="@+id/btn_layer_normal"
+                app:selectionRequired="true"
+                app:singleSelection="true">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_layer_normal"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/map_layer_normal"
+                    android:textAllCaps="false" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_layer_satellite"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/map_layer_satellite"
+                    android:textAllCaps="false" />
+            </com.google.android.material.button.MaterialButtonToggleGroup>
+
+            <!-- Aviso si falta la clave de Maps o no hay pines -->
+            <TextView
+                android:id="@+id/tv_map_message"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_warning_banner"
+                android:padding="12dp"
+                android:textColor="#9A3412"
+                android:textSize="13sp"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <!-- Leyenda de colores de los pines -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|start"
+            android:layout_margin="12dp"
+            android:background="@drawable/bg_search_input"
+            android:orientation="vertical"
+            android:padding="10dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:drawablePadding="6dp"
+                android:gravity="center_vertical"
+                android:text="@string/title_incomes"
+                android:textColor="@color/text_primary"
+                android:textSize="12sp"
+                app:drawableStartCompat="@drawable/ic_location"
+                app:drawableTint="@color/income" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:drawablePadding="6dp"
+                android:gravity="center_vertical"
+                android:text="@string/title_expenses"
+                android:textColor="@color/text_primary"
+                android:textSize="12sp"
+                app:drawableStartCompat="@drawable/ic_location"
+                app:drawableTint="@color/expense" />
+        </LinearLayout>
+    </FrameLayout>
+</LinearLayout>

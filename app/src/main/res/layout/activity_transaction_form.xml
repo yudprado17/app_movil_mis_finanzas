@@ -26,7 +26,6 @@
             android:contentDescription="Atras"
             android:src="@drawable/ic_arrow_back"
             app:tint="@color/white" />
-        <!-- Note: We use rotation just as a temporary trick or we can write a clean back arrow vector, let's write an actual back arrow vector later or use simple arrow. Wait, I will create a real back arrow vector! For now, let's write the layout -->
 
         <TextView
             android:id="@+id/tv_form_title"
@@ -179,7 +178,7 @@
             <RelativeLayout
                 android:layout_width="match_parent"
                 android:layout_height="56dp"
-                android:layout_marginBottom="32dp"
+                android:layout_marginBottom="20dp"
                 android:background="@drawable/bg_spinner">
 
                 <androidx.appcompat.widget.AppCompatSpinner
@@ -189,6 +188,208 @@
                     android:background="@android:color/transparent"
                     android:spinnerMode="dropdown" />
             </RelativeLayout>
+
+            <!-- =========================================================
+                 PILAR B: Comprobante fotográfico (Cámara / Galería)
+                 ========================================================= -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                android:text="@string/label_receipt"
+                android:textColor="@color/text_secondary"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <FrameLayout
+                android:id="@+id/layout_receipt_preview"
+                android:layout_width="match_parent"
+                android:layout_height="180dp"
+                android:layout_marginBottom="8dp"
+                android:background="@drawable/bg_thumbnail"
+                android:visibility="gone">
+
+                <ImageView
+                    android:id="@+id/iv_receipt_preview"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:contentDescription="@string/label_receipt"
+                    android:scaleType="centerCrop" />
+
+                <ImageButton
+                    android:id="@+id/btn_remove_photo"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:layout_gravity="top|end"
+                    android:layout_margin="8dp"
+                    android:background="@drawable/bg_logo_circle"
+                    android:backgroundTint="#99000000"
+                    android:contentDescription="@string/action_remove_photo"
+                    android:src="@drawable/ic_close"
+                    app:tint="@color/white" />
+            </FrameLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                android:orientation="horizontal">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_camera"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="52dp"
+                    android:layout_marginEnd="6dp"
+                    android:layout_weight="1"
+                    android:text="@string/action_camera"
+                    android:textAllCaps="false"
+                    android:textColor="@color/primary"
+                    app:icon="@drawable/ic_camera"
+                    app:iconTint="@color/primary"
+                    app:strokeColor="@color/primary" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_gallery"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="52dp"
+                    android:layout_marginStart="6dp"
+                    android:layout_weight="1"
+                    android:text="@string/action_gallery"
+                    android:textAllCaps="false"
+                    android:textColor="@color/primary"
+                    app:icon="@drawable/ic_image"
+                    app:iconTint="@color/primary"
+                    app:strokeColor="@color/primary" />
+            </LinearLayout>
+
+            <!-- Progreso de subida a Firebase Storage -->
+            <LinearLayout
+                android:id="@+id/layout_upload_progress"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <ProgressBar
+                    android:id="@+id/progress_upload"
+                    style="@style/Widget.AppCompat.ProgressBar.Horizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:max="100"
+                    android:progressTint="@color/primary" />
+
+                <TextView
+                    android:id="@+id/tv_upload_progress"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Subiendo foto... 0%"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <!-- =========================================================
+                 PILAR C: Ubicación (GPS + Geocodificación inversa)
+                 ========================================================= -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:layout_marginBottom="8dp"
+                android:text="@string/label_location"
+                android:textColor="@color/text_secondary"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <androidx.cardview.widget.CardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                app:cardBackgroundColor="@color/white"
+                app:cardCornerRadius="10dp"
+                app:cardElevation="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:padding="12dp">
+
+                    <ImageView
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
+                        android:contentDescription="@string/label_location"
+                        android:src="@drawable/ic_location" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="12dp"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:id="@+id/tv_location_address"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/location_empty"
+                            android:textColor="@color/text_primary"
+                            android:textSize="14sp" />
+
+                        <TextView
+                            android:id="@+id/tv_location_coords"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="12sp"
+                            android:visibility="gone" />
+                    </LinearLayout>
+
+                    <ProgressBar
+                        android:id="@+id/progress_location"
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
+                        android:visibility="gone" />
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="24dp"
+                android:orientation="horizontal">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_get_location"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="52dp"
+                    android:layout_weight="1"
+                    android:text="@string/action_get_location"
+                    android:textAllCaps="false"
+                    android:textColor="@color/primary"
+                    app:icon="@drawable/ic_my_location"
+                    app:iconTint="@color/primary"
+                    app:strokeColor="@color/primary" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_view_on_map"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="52dp"
+                    android:layout_marginStart="8dp"
+                    android:text="Mapa"
+                    android:textAllCaps="false"
+                    android:textColor="@color/primary"
+                    android:visibility="gone"
+                    app:icon="@drawable/ic_map"
+                    app:iconTint="@color/primary"
+                    app:strokeColor="@color/primary" />
+            </LinearLayout>
 
             <!-- Progress Bar for Cloud operations -->
             <ProgressBar
@@ -229,6 +430,20 @@
                     android:textSize="16sp"
                     android:textStyle="bold"
                     android:visibility="gone" />
+
+                <!-- RBAC: aviso para usuarios Estándar en modo edición -->
+                <TextView
+                    android:id="@+id/tv_delete_restricted"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:drawablePadding="6dp"
+                    android:gravity="center"
+                    android:text="@string/delete_admin_only"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="12sp"
+                    android:visibility="gone"
+                    app:drawableStartCompat="@drawable/ic_lock" />
 
             </LinearLayout>
 

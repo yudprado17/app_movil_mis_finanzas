@@ -3,6 +3,18 @@ plugins {
     id 'com.google.gms.google-services'
 }
 
+// =========================================================================
+// MOMENTO 3: La clave de Google Maps se lee de local.properties (que NO se
+// sube a GitHub) para no exponerla en el repositorio.
+//   local.properties  ->  MAPS_API_KEY=AIza...
+// =========================================================================
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withInputStream { localProperties.load(it) }
+}
+def mapsApiKey = localProperties.getProperty('MAPS_API_KEY', '')
+
 android {
     namespace 'com.misfinanzas.gestorgastos'
     compileSdk 34
@@ -11,10 +23,17 @@ android {
         applicationId "com.misfinanzas.gestorgastos"
         minSdk 24
         targetSdk 34
-        versionCode 1
-        versionName "1.0"
+        versionCode 3
+        versionName "3.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        manifestPlaceholders = [MAPS_API_KEY: mapsApiKey]
+        buildConfigField "boolean", "MAPS_KEY_CONFIGURED", "${!mapsApiKey.isEmpty()}"
+    }
+
+    buildFeatures {
+        buildConfig true
     }
 
     buildTypes {
@@ -31,18 +50,29 @@ android {
 
 dependencies {
     implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'androidx.activity:activity:1.8.2'
     implementation 'com.google.android.material:material:1.11.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
     implementation 'androidx.recyclerview:recyclerview:1.3.2'
     implementation 'androidx.cardview:cardview:1.0.0'
-    
-    // Firebase Firestore (Momento 2)
+    implementation 'androidx.exifinterface:exifinterface:1.3.7'
+
+    // Firebase (Momento 2: Firestore | Momento 3: Auth, Storage y Cloud Messaging)
     implementation platform('com.google.firebase:firebase-bom:32.7.4')
     implementation 'com.google.firebase:firebase-firestore'
-    
+    implementation 'com.google.firebase:firebase-auth'
+    implementation 'com.google.firebase:firebase-storage'
+    implementation 'com.google.firebase:firebase-messaging'
+
+    // Glide: carga de imágenes con caché (Momento 3)
+    implementation 'com.github.bumptech.glide:glide:4.16.0'
+
+    // Google Play Services: GPS y Mapas (Momento 3)
+    implementation 'com.google.android.gms:play-services-location:21.0.1'
+    implementation 'com.google.android.gms:play-services-maps:18.2.0'
+
     // Testing
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
 }
-

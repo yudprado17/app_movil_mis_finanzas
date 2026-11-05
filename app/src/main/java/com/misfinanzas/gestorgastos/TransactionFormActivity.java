@@ -1,16 +1,27 @@
 package com.misfinanzas.gestorgastos;
 
+import android.Manifest;
 import android.app.AlertDialog;
 import android.app.DatePickerDialog;
-import android.content.DialogInterface;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.location.Location;
+import android.location.LocationManager;
+import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.provider.Settings;
 import android.text.Editable;
 import android.text.TextWatcher;
+import android.util.Log;
 import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
-import android.widget.DatePicker;
+import android.widget.FrameLayout;
 import android.widget.ImageButton;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
@@ -18,23 +29,50 @@ import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.PickVisualMediaRequest;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
+import androidx.core.content.FileProvider;
+import androidx.core.location.LocationManagerCompat;
 
-import com.google.android.gms.tasks.OnFailureListener;
-import com.google.android.gms.tasks.OnSuccessListener;
+import com.bumptech.glide.Glide;
+import com.bumptech.glide.load.engine.DiskCacheStrategy;
+import com.google.android.gms.location.FusedLocationProviderClient;
+import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.location.Priority;
+import com.google.android.gms.tasks.CancellationTokenSource;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
-import com.google.firebase.firestore.DocumentReference;
-import com.google.firebase.firestore.DocumentSnapshot;
 import com.misfinanzas.gestorgastos.database.FirestoreManager;
+import com.misfinanzas.gestorgastos.database.StorageManager;
 import com.misfinanzas.gestorgastos.model.Transaction;
+import com.misfinanzas.gestorgastos.notifications.NotificationHelper;
+import com.misfinanzas.gestorgastos.session.SessionManager;
+import com.misfinanzas.gestorgastos.util.GeocoderHelper;
+import com.misfinanzas.gestorgastos.util.ImageUtils;
 
+import java.io.File;
+import java.text.NumberFormat;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class TransactionFormActivity extends AppCompatActivity {
+
+    private static final String TAG = "TransactionForm";
+
+    // Claves para conservar el estado al girar la pantalla
+    private static final String STATE_IMAGE_URI = "state_image_uri";
+    private static final String STATE_CAMERA_URI = "state_camera_uri";
+    private static final String STATE_REMOVE_IMAGE = "state_remove_image";
+    private static final String STATE_LAT = "state_lat";
+    private static final String STATE_LNG = "state_lng";
+    private static final String STATE_ADDRESS = "state_address";
 
     private ImageButton btnBack;
     private TextView tvFormTitle;
@@ -44,22 +82,95 @@ public class TransactionFormActivity extends AppCompatActivity {
     private TextInputEditText tietConcept, tietAmount, tietDate;
     private Spinner spinnerCategory;
     private ProgressBar progressBarForm;
-    private Button btnSave, btnDelete;
+    private Button btnSave, btnDelete, btnCamera, btnGallery, btnGetLocation, btnViewOnMap;
+    private TextView tvDeleteRestricted;
+
+    // Comprobante
+    private FrameLayout layoutReceiptPreview;
+    private ImageView ivReceiptPreview;
+    private LinearLayout layoutUploadProgress;
+    private ProgressBar progressUpload;
+    private TextView tvUploadProgress;
+
+    // Ubicación
+    private TextView tvLocationAddress, tvLocationCoords;
+    private ProgressBar progressLocation;
 
     private FirestoreManager firestoreManager;
+    private StorageManager storageManager;
+    private SessionManager session;
+    private FusedLocationProviderClient fusedLocationClient;
+    private final ExecutorService ioExecutor = Executors.newSingleThreadExecutor();
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+
     private boolean isEditMode = false;
     private String documentId = null;
+    private Transaction originalTransaction = null;
+
+    // Estado del comprobante
+    private Uri selectedImageUri = null;   // Foto nueva pendiente de subir
+    private Uri pendingCameraUri = null;   // Archivo donde la cámara guardará la foto
+    private boolean removeImage = false;   // El usuario quitó la foto existente
+
+    // Estado de la ubicación
+    private Double currentLat = null;
+    private Double currentLng = null;
+    private String currentAddress = null;
 
     private final Calendar calendar = Calendar.getInstance();
     private final SimpleDateFormat dateFormatter = new SimpleDateFormat("yyyy-MM-dd", Locale.US);
+
+    // =========================================================================
+    // PILAR B: API moderna ActivityResultLauncher (Cámara, Galería y permisos)
+    // =========================================================================
+    private final ActivityResultLauncher<String> cameraPermissionLauncher =
+            registerForActivityResult(new ActivityResultContracts.RequestPermission(), granted -> {
+                if (granted) {
+                    launchCamera();
+                } else {
+                    showPermissionDeniedDialog("cámara", "tomar la foto del comprobante");
+                }
+            });
+
+    private final ActivityResultLauncher<Uri> takePictureLauncher =
+            registerForActivityResult(new ActivityResultContracts.TakePicture(), success -> {
+                if (Boolean.TRUE.equals(success) && pendingCameraUri != null) {
+                    onImageSelected(pendingCameraUri);
+                }
+            });
+
+    private final ActivityResultLauncher<PickVisualMediaRequest> pickImageLauncher =
+            registerForActivityResult(new ActivityResultContracts.PickVisualMedia(), uri -> {
+                if (uri != null) {
+                    onImageSelected(uri);
+                }
+            });
+
+    // PILAR C: permisos de ubicación precisa y aproximada
+    private final ActivityResultLauncher<String[]> locationPermissionLauncher =
+            registerForActivityResult(new ActivityResultContracts.RequestMultiplePermissions(), result -> {
+                boolean fine = Boolean.TRUE.equals(result.get(Manifest.permission.ACCESS_FINE_LOCATION));
+                boolean coarse = Boolean.TRUE.equals(result.get(Manifest.permission.ACCESS_COARSE_LOCATION));
+                if (fine || coarse) {
+                    if (!fine) {
+                        Toast.makeText(this, "Usando ubicación aproximada", Toast.LENGTH_SHORT).show();
+                    }
+                    fetchCurrentLocation(fine);
+                } else {
+                    showPermissionDeniedDialog("ubicación", "registrar dónde se hizo la transacción");
+                }
+            });
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_transaction_form);
 
-        // Inicializar Firestore Manager
+        // Inicializar servicios
         firestoreManager = new FirestoreManager();
+        storageManager = new StorageManager();
+        session = new SessionManager(this);
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
 
         // Inicializar Vistas
         btnBack = findViewById(R.id.btn_back);
@@ -77,6 +188,20 @@ public class TransactionFormActivity extends AppCompatActivity {
         progressBarForm = findViewById(R.id.progress_bar_form);
         btnSave = findViewById(R.id.btn_save);
         btnDelete = findViewById(R.id.btn_delete);
+        tvDeleteRestricted = findViewById(R.id.tv_delete_restricted);
+        btnCamera = findViewById(R.id.btn_camera);
+        btnGallery = findViewById(R.id.btn_gallery);
+        layoutReceiptPreview = findViewById(R.id.layout_receipt_preview);
+        ivReceiptPreview = findViewById(R.id.iv_receipt_preview);
+        layoutUploadProgress = findViewById(R.id.layout_upload_progress);
+        progressUpload = findViewById(R.id.progress_upload);
+        tvUploadProgress = findViewById(R.id.tv_upload_progress);
+        tvLocationAddress = findViewById(R.id.tv_location_address);
+        tvLocationCoords = findViewById(R.id.tv_location_coords);
+        progressLocation = findViewById(R.id.progress_location);
+        btnGetLocation = findViewById(R.id.btn_get_location);
+        btnViewOnMap = findViewById(R.id.btn_view_on_map);
+        ImageButton btnRemovePhoto = findViewById(R.id.btn_remove_photo);
 
         // Configurar Spinner de Categorías
         ArrayAdapter<CharSequence> spinnerAdapter = ArrayAdapter.createFromResource(
@@ -85,51 +210,87 @@ public class TransactionFormActivity extends AppCompatActivity {
         spinnerCategory.setAdapter(spinnerAdapter);
 
         // Configurar selector de fecha
-        tietDate.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                showDatePicker();
-            }
+        tietDate.setOnClickListener(v -> showDatePicker());
+        btnBack.setOnClickListener(v -> finish());
+
+        // Comprobante
+        btnCamera.setOnClickListener(v -> onCameraClicked());
+        btnGallery.setOnClickListener(v -> pickImageLauncher.launch(new PickVisualMediaRequest.Builder()
+                .setMediaType(ActivityResultContracts.PickVisualMedia.ImageOnly.INSTANCE)
+                .build()));
+        btnRemovePhoto.setOnClickListener(v -> {
+            selectedImageUri = null;
+            removeImage = true;
+            renderReceiptPreview();
         });
 
-        // Configurar Botón Atrás
-        btnBack.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                finish();
-            }
+        // Ubicación
+        btnGetLocation.setOnClickListener(v -> onGetLocationClicked());
+        btnViewOnMap.setOnClickListener(v -> {
+            Intent intent = new Intent(this, MapActivity.class);
+            if (currentLat == null || currentLng == null) return;
+            intent.putExtra(MapActivity.EXTRA_LAT, currentLat.doubleValue());
+            intent.putExtra(MapActivity.EXTRA_LNG, currentLng.doubleValue());
+            startActivity(intent);
         });
 
-        // =========================================================================
-        // PILAR 4: Validaciones en Tiempo Real (TextWatcher)
-        // =========================================================================
+        // PILAR E: Validaciones en Tiempo Real (TextWatcher)
         setupRealtimeValidations();
+
+        // Restaurar el estado si la pantalla se giró
+        if (savedInstanceState != null) {
+            selectedImageUri = savedInstanceState.getParcelable(STATE_IMAGE_URI);
+            pendingCameraUri = savedInstanceState.getParcelable(STATE_CAMERA_URI);
+            removeImage = savedInstanceState.getBoolean(STATE_REMOVE_IMAGE, false);
+            if (savedInstanceState.containsKey(STATE_LAT)) {
+                currentLat = savedInstanceState.getDouble(STATE_LAT);
+                currentLng = savedInstanceState.getDouble(STATE_LNG);
+                currentAddress = savedInstanceState.getString(STATE_ADDRESS);
+            }
+        }
 
         // Determinar si es Edición o Creación
         if (getIntent().hasExtra("DOCUMENT_ID")) {
             isEditMode = true;
             documentId = getIntent().getStringExtra("DOCUMENT_ID");
-            loadTransactionData();
-        } else {
+            applyRolePermissions();
+            loadTransactionData(savedInstanceState == null);
+        } else if (savedInstanceState == null) {
             // Modo Creación: Establecer fecha actual por defecto
             tietDate.setText(dateFormatter.format(calendar.getTime()));
         }
 
-        // Configurar Botón Guardar
-        btnSave.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                saveTransaction();
-            }
-        });
+        renderReceiptPreview();
+        renderLocation();
 
-        // Configurar Botón Eliminar
-        btnDelete.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                confirmDelete();
-            }
-        });
+        btnSave.setOnClickListener(v -> saveTransaction());
+        btnDelete.setOnClickListener(v -> confirmDelete());
+    }
+
+    @Override
+    protected void onSaveInstanceState(@NonNull Bundle outState) {
+        super.onSaveInstanceState(outState);
+        outState.putParcelable(STATE_IMAGE_URI, selectedImageUri);
+        outState.putParcelable(STATE_CAMERA_URI, pendingCameraUri);
+        outState.putBoolean(STATE_REMOVE_IMAGE, removeImage);
+        if (currentLat != null && currentLng != null) {
+            outState.putDouble(STATE_LAT, currentLat);
+            outState.putDouble(STATE_LNG, currentLng);
+            outState.putString(STATE_ADDRESS, currentAddress);
+        }
+    }
+
+    // =========================================================================
+    // PILAR A: RBAC - Solo el Administrador puede eliminar
+    // =========================================================================
+    private void applyRolePermissions() {
+        if (session.isAdmin()) {
+            btnDelete.setVisibility(View.VISIBLE);
+            tvDeleteRestricted.setVisibility(View.GONE);
+        } else {
+            btnDelete.setVisibility(View.GONE);
+            tvDeleteRestricted.setVisibility(View.VISIBLE);
+        }
     }
 
     private void setupRealtimeValidations() {
@@ -186,14 +347,11 @@ public class TransactionFormActivity extends AppCompatActivity {
     private void showDatePicker() {
         DatePickerDialog datePickerDialog = new DatePickerDialog(
                 this,
-                new DatePickerDialog.OnDateSetListener() {
-                    @Override
-                    public void onDateSet(DatePicker view, int year, int month, int dayOfMonth) {
-                        calendar.set(Calendar.YEAR, year);
-                        calendar.set(Calendar.MONTH, month);
-                        calendar.set(Calendar.DAY_OF_MONTH, dayOfMonth);
-                        tietDate.setText(dateFormatter.format(calendar.getTime()));
-                    }
+                (view, year, month, dayOfMonth) -> {
+                    calendar.set(Calendar.YEAR, year);
+                    calendar.set(Calendar.MONTH, month);
+                    calendar.set(Calendar.DAY_OF_MONTH, dayOfMonth);
+                    tietDate.setText(dateFormatter.format(calendar.getTime()));
                 },
                 calendar.get(Calendar.YEAR),
                 calendar.get(Calendar.MONTH),
@@ -202,69 +360,258 @@ public class TransactionFormActivity extends AppCompatActivity {
         datePickerDialog.show();
     }
 
-    private void loadTransactionData() {
+    /**
+     * @param fillFields true en la primera carga; false si la pantalla se recreó
+     *                   (al girar), para no pisar lo que el usuario ya cambió.
+     */
+    private void loadTransactionData(boolean fillFields) {
         tvFormTitle.setText(R.string.title_edit_transaction);
-        btnDelete.setVisibility(View.VISIBLE);
         setLoadingState(true);
 
-        firestoreManager.getTransactionById(documentId, new OnSuccessListener<DocumentSnapshot>() {
-            @Override
-            public void onSuccess(DocumentSnapshot doc) {
-                setLoadingState(false);
-                if (doc.exists()) {
-                    Transaction transaction = doc.toObject(Transaction.class);
-                    if (transaction != null) {
-                        tietConcept.setText(transaction.getConcepto());
-                        tietAmount.setText(String.valueOf(transaction.getMonto()));
-                        tietDate.setText(transaction.getFecha());
+        firestoreManager.getTransactionById(documentId, doc -> {
+            setLoadingState(false);
+            if (!doc.exists()) {
+                Toast.makeText(TransactionFormActivity.this, "No se encontró el documento en Firestore", Toast.LENGTH_SHORT).show();
+                finish();
+                return;
+            }
+            Transaction transaction = doc.toObject(Transaction.class);
+            if (transaction == null) return;
+            originalTransaction = transaction;
 
-                        // Seleccionar tipo
-                        if ("Ingreso".equalsIgnoreCase(transaction.getTipo())) {
-                            rbIncome.setChecked(true);
-                        } else {
-                            rbExpense.setChecked(true);
-                        }
+            if (fillFields) {
+                tietConcept.setText(transaction.getConcepto());
+                tietAmount.setText(String.valueOf(transaction.getMonto()));
+                tietDate.setText(transaction.getFecha());
 
-                        // Seleccionar categoría
-                        ArrayAdapter<CharSequence> adapter = (ArrayAdapter<CharSequence>) spinnerCategory.getAdapter();
-                        if (adapter != null) {
-                            int position = adapter.getPosition(transaction.getCategoria());
-                            if (position >= 0) {
-                                spinnerCategory.setSelection(position);
-                            }
-                        }
-
-                        // Actualizar calendario con la fecha cargada
-                        try {
-                            if (transaction.getFecha() != null) {
-                                java.util.Date date = dateFormatter.parse(transaction.getFecha());
-                                if (date != null) {
-                                    calendar.setTime(date);
-                                }
-                            }
-                        } catch (Exception e) {
-                            e.printStackTrace();
-                        }
-                    }
+                // Seleccionar tipo
+                if ("Ingreso".equalsIgnoreCase(transaction.getTipo())) {
+                    rbIncome.setChecked(true);
                 } else {
-                    Toast.makeText(TransactionFormActivity.this, "No se encontró el documento en Firestore", Toast.LENGTH_SHORT).show();
-                    finish();
+                    rbExpense.setChecked(true);
+                }
+
+                // Seleccionar categoría
+                @SuppressWarnings("unchecked")
+                ArrayAdapter<CharSequence> adapter = (ArrayAdapter<CharSequence>) spinnerCategory.getAdapter();
+                if (adapter != null) {
+                    int position = adapter.getPosition(transaction.getCategoria());
+                    if (position >= 0) {
+                        spinnerCategory.setSelection(position);
+                    }
+                }
+
+                // Ubicación guardada
+                if (transaction.hasLocation()) {
+                    currentLat = transaction.getLatitud();
+                    currentLng = transaction.getLongitud();
+                    currentAddress = transaction.getDireccion();
                 }
             }
-        }, new OnFailureListener() {
-            @Override
-            public void onFailure(@NonNull Exception e) {
-                setLoadingState(false);
-                Toast.makeText(TransactionFormActivity.this, "Error al cargar documento: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-                finish();
+
+            // Actualizar calendario con la fecha cargada
+            try {
+                if (transaction.getFecha() != null) {
+                    java.util.Date date = dateFormatter.parse(transaction.getFecha());
+                    if (date != null) {
+                        calendar.setTime(date);
+                    }
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "Fecha con formato inesperado", e);
             }
+
+            renderReceiptPreview();
+            renderLocation();
+        }, e -> {
+            setLoadingState(false);
+            Toast.makeText(TransactionFormActivity.this, "Error al cargar documento: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            finish();
         });
     }
 
+    // =========================================================================
+    // PILAR B: Captura multimedia (Cámara con permiso en tiempo de ejecución)
+    // =========================================================================
+    private void onCameraClicked() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+            launchCamera();
+        } else if (shouldShowRequestPermissionRationale(Manifest.permission.CAMERA)) {
+            new AlertDialog.Builder(this)
+                    .setTitle("Permiso de cámara")
+                    .setMessage("Mis Finanzas necesita la cámara para fotografiar el comprobante de la transacción.")
+                    .setPositiveButton("Continuar", (d, w) -> cameraPermissionLauncher.launch(Manifest.permission.CAMERA))
+                    .setNegativeButton(R.string.action_cancel, null)
+                    .show();
+        } else {
+            cameraPermissionLauncher.launch(Manifest.permission.CAMERA);
+        }
+    }
+
+    private void launchCamera() {
+        try {
+            File dir = new File(getCacheDir(), "camera");
+            if (!dir.exists() && !dir.mkdirs()) {
+                throw new IllegalStateException("No se pudo crear la carpeta temporal");
+            }
+            File photo = new File(dir, "comprobante_" + System.currentTimeMillis() + ".jpg");
+            pendingCameraUri = FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", photo);
+            takePictureLauncher.launch(pendingCameraUri);
+        } catch (Exception e) {
+            Toast.makeText(this, "No se pudo abrir la cámara: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void onImageSelected(Uri uri) {
+        selectedImageUri = uri;
+        removeImage = false;
+        renderReceiptPreview();
+    }
+
+    /** Muestra la foto nueva (local) o la existente (URL de Storage) con Glide. */
+    private void renderReceiptPreview() {
+        Object source = null;
+        if (selectedImageUri != null) {
+            source = selectedImageUri;
+        } else if (!removeImage && originalTransaction != null && originalTransaction.hasImage()) {
+            source = originalTransaction.getImageUrl();
+        }
+
+        if (source == null) {
+            Glide.with(this).clear(ivReceiptPreview);
+            layoutReceiptPreview.setVisibility(View.GONE);
+            return;
+        }
+        layoutReceiptPreview.setVisibility(View.VISIBLE);
+        Glide.with(this)
+                .load(source)
+                .placeholder(R.drawable.ic_receipt)
+                .error(R.drawable.ic_broken_image)
+                .diskCacheStrategy(DiskCacheStrategy.ALL)
+                .centerCrop()
+                .into(ivReceiptPreview);
+    }
+
+    // =========================================================================
+    // PILAR C: Captura de coordenadas con FusedLocationProviderClient
+    // =========================================================================
+    private void onGetLocationClicked() {
+        boolean fine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+        boolean coarse = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+        if (fine || coarse) {
+            fetchCurrentLocation(fine);
+        } else {
+            locationPermissionLauncher.launch(new String[]{
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+            });
+        }
+    }
+
+    private void fetchCurrentLocation(boolean precise) {
+        LocationManager lm = (LocationManager) getSystemService(LOCATION_SERVICE);
+        if (lm != null && !LocationManagerCompat.isLocationEnabled(lm)) {
+            new AlertDialog.Builder(this)
+                    .setTitle("Ubicación desactivada")
+                    .setMessage("Activa la ubicación (GPS) del dispositivo para registrar dónde se hizo la transacción.")
+                    .setPositiveButton("Activar", (d, w) -> startActivity(new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)))
+                    .setNegativeButton(R.string.action_cancel, null)
+                    .show();
+            return;
+        }
+
+        progressLocation.setVisibility(View.VISIBLE);
+        btnGetLocation.setEnabled(false);
+        int priority = precise ? Priority.PRIORITY_HIGH_ACCURACY : Priority.PRIORITY_BALANCED_POWER_ACCURACY;
+
+        try {
+            CancellationTokenSource cts = new CancellationTokenSource();
+            fusedLocationClient.getCurrentLocation(priority, cts.getToken())
+                    .addOnSuccessListener(location -> {
+                        if (location != null) {
+                            onLocationObtained(location);
+                        } else {
+                            // Respaldo: última ubicación conocida
+                            fallbackToLastLocation();
+                        }
+                    })
+                    .addOnFailureListener(e -> fallbackToLastLocation());
+        } catch (SecurityException e) {
+            onLocationFailed("Permiso de ubicación no concedido");
+        }
+    }
+
+    private void fallbackToLastLocation() {
+        try {
+            fusedLocationClient.getLastLocation()
+                    .addOnSuccessListener(location -> {
+                        if (location != null) {
+                            onLocationObtained(location);
+                        } else {
+                            onLocationFailed("No se pudo obtener la ubicación. Intenta de nuevo al aire libre.");
+                        }
+                    })
+                    .addOnFailureListener(e -> onLocationFailed("Error de ubicación: " + e.getMessage()));
+        } catch (SecurityException e) {
+            onLocationFailed("Permiso de ubicación no concedido");
+        }
+    }
+
+    private void onLocationObtained(Location location) {
+        currentLat = location.getLatitude();
+        currentLng = location.getLongitude();
+        currentAddress = null;
+        renderLocation();
+
+        // Geocodificación inversa: coordenadas -> dirección legible
+        tvLocationAddress.setText("Buscando dirección...");
+        GeocoderHelper.reverseGeocode(this, currentLat, currentLng, address -> {
+            progressLocation.setVisibility(View.GONE);
+            btnGetLocation.setEnabled(true);
+            currentAddress = address != null ? address : "Dirección no disponible";
+            renderLocation();
+        });
+    }
+
+    private void onLocationFailed(String message) {
+        progressLocation.setVisibility(View.GONE);
+        btnGetLocation.setEnabled(true);
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+    }
+
+    private void renderLocation() {
+        if (currentLat == null || currentLng == null) {
+            tvLocationAddress.setText(R.string.location_empty);
+            tvLocationCoords.setVisibility(View.GONE);
+            btnViewOnMap.setVisibility(View.GONE);
+            return;
+        }
+        tvLocationAddress.setText(currentAddress != null ? currentAddress : "Ubicación capturada");
+        tvLocationCoords.setText(String.format(Locale.US, "Lat %.5f, Lng %.5f", currentLat, currentLng));
+        tvLocationCoords.setVisibility(View.VISIBLE);
+        btnViewOnMap.setVisibility(View.VISIBLE);
+    }
+
+    private void showPermissionDeniedDialog(String permissionName, String reason) {
+        new AlertDialog.Builder(this)
+                .setTitle("Permiso de " + permissionName + " denegado")
+                .setMessage("Sin este permiso no es posible " + reason + ". Puedes activarlo en los ajustes de la aplicación.")
+                .setPositiveButton("Abrir ajustes", (d, w) -> {
+                    Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                            Uri.fromParts("package", getPackageName(), null));
+                    startActivity(intent);
+                })
+                .setNegativeButton(R.string.action_cancel, null)
+                .show();
+    }
+
+    // =========================================================================
+    // GUARDAR: validar -> (subir foto a Storage) -> guardar en Firestore -> notificar
+    // =========================================================================
     private void saveTransaction() {
-        String concept = tietConcept.getText().toString().trim();
-        String amountStr = tietAmount.getText().toString().trim();
-        String date = tietDate.getText().toString().trim();
+        String concept = textOf(tietConcept).trim();
+        String amountStr = textOf(tietAmount).trim();
+        String date = textOf(tietDate).trim();
         String type = rbIncome.isChecked() ? "Ingreso" : "Gasto";
         String category = spinnerCategory.getSelectedItem().toString();
 
@@ -305,89 +652,169 @@ public class TransactionFormActivity extends AppCompatActivity {
         }
 
         if (!isValid) return;
+        if (isEditMode && originalTransaction == null) {
+            Toast.makeText(this, "Espera a que cargue la transacción", Toast.LENGTH_SHORT).show();
+            return;
+        }
 
-        // =========================================================================
-        // PILAR 4: Prevenir Doble Envío (Deshabilitar botones durante guardado)
-        // =========================================================================
+        // Prevenir doble envío (deshabilitar botones durante el guardado)
         setLoadingState(true);
 
+        Transaction transaction = isEditMode
+                ? new Transaction(documentId, concept, amount, type, date, category)
+                : new Transaction(concept, amount, type, date, category);
+
+        // Dueño del registro: se conserva el original al editar (el Admin puede editar registros ajenos)
         if (isEditMode) {
-            Transaction transaction = new Transaction(documentId, concept, amount, type, date, category);
-            firestoreManager.updateTransaction(documentId, transaction, new OnSuccessListener<Void>() {
+            transaction.setUserId(originalTransaction.getUserId());
+            transaction.setUserEmail(originalTransaction.getUserEmail());
+        }
+        if (transaction.getUserId() == null) {
+            transaction.setUserId(session.getUid());
+            transaction.setUserEmail(session.getEmail());
+        }
+
+        // Ubicación
+        transaction.setLatitud(currentLat);
+        transaction.setLongitud(currentLng);
+        transaction.setDireccion(currentLat != null ? currentAddress : null);
+
+        // Comprobante: se conserva el existente salvo que se quite o se reemplace
+        String oldImagePath = isEditMode ? originalTransaction.getImagePath() : null;
+        if (isEditMode && !removeImage) {
+            transaction.setImageUrl(originalTransaction.getImageUrl());
+            transaction.setImagePath(originalTransaction.getImagePath());
+        }
+
+        if (selectedImageUri != null) {
+            uploadImageThenPersist(transaction, oldImagePath);
+        } else {
+            persist(transaction, removeImage ? oldImagePath : null);
+        }
+    }
+
+    /** PILAR B: sube la foto a Firebase Storage mostrando el progreso. */
+    private void uploadImageThenPersist(Transaction transaction, String oldImagePath) {
+        layoutUploadProgress.setVisibility(View.VISIBLE);
+        progressUpload.setProgress(0);
+        tvUploadProgress.setText("Preparando foto...");
+
+        final Uri uri = selectedImageUri;
+        ioExecutor.execute(() -> {
+            byte[] bytes;
+            try {
+                bytes = ImageUtils.compressForUpload(getApplicationContext(), uri);
+            } catch (Exception e) {
+                mainHandler.post(() -> onUploadFailed(transaction, e));
+                return;
+            }
+            final byte[] data = bytes;
+            mainHandler.post(() -> storageManager.uploadReceipt(session.getUid(), data, new StorageManager.UploadCallback() {
                 @Override
-                public void onSuccess(Void unused) {
-                    Toast.makeText(TransactionFormActivity.this, "Transacción actualizada en la nube", Toast.LENGTH_SHORT).show();
-                    finish();
+                public void onProgress(int percent) {
+                    progressUpload.setProgress(percent);
+                    tvUploadProgress.setText("Subiendo foto... " + percent + "%");
                 }
-            }, new OnFailureListener() {
+
                 @Override
-                public void onFailure(@NonNull Exception e) {
-                    setLoadingState(false);
-                    Toast.makeText(TransactionFormActivity.this, "Error al actualizar: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                public void onSuccess(@NonNull String downloadUrl, @NonNull String storagePath) {
+                    tvUploadProgress.setText("Foto subida ✔");
+                    transaction.setImageUrl(downloadUrl);
+                    transaction.setImagePath(storagePath);
+                    persist(transaction, oldImagePath);
                 }
+
+                @Override
+                public void onError(@NonNull Exception e) {
+                    onUploadFailed(transaction, e);
+                }
+            }));
+        });
+    }
+
+    /**
+     * Tolerancia a fallos: si la foto no se puede subir (sin red, Storage sin
+     * configurar, reglas, etc.) la transacción se guarda igual y se avisa.
+     */
+    private void onUploadFailed(Transaction transaction, Exception e) {
+        Log.e(TAG, "Fallo la subida a Storage", e);
+        layoutUploadProgress.setVisibility(View.GONE);
+        Toast.makeText(this, "No se pudo subir la foto (" + e.getMessage() + "). La transacción se guardará sin la foto nueva.", Toast.LENGTH_LONG).show();
+        persist(transaction, null);
+    }
+
+    /** Guarda en Firestore y, si hubo éxito, borra la foto anterior y notifica. */
+    private void persist(Transaction transaction, String imagePathToDelete) {
+        final String formattedAmount = NumberFormat.getCurrencyInstance(Locale.US).format(transaction.getMonto());
+
+        if (isEditMode) {
+            firestoreManager.updateTransaction(documentId, transaction, unused -> {
+                if (imagePathToDelete != null && !imagePathToDelete.equals(transaction.getImagePath())) {
+                    storageManager.deleteFile(imagePathToDelete);
+                }
+                NotificationHelper.notifyTransactionSaved(this, true, transaction.getConcepto(), formattedAmount);
+                Toast.makeText(TransactionFormActivity.this, "Transacción actualizada en la nube", Toast.LENGTH_SHORT).show();
+                finish();
+            }, e -> {
+                setLoadingState(false);
+                Toast.makeText(TransactionFormActivity.this, "Error al actualizar: " + e.getMessage(), Toast.LENGTH_LONG).show();
             });
         } else {
-            Transaction transaction = new Transaction(concept, amount, type, date, category);
-            firestoreManager.addTransaction(transaction, new OnSuccessListener<DocumentReference>() {
-                @Override
-                public void onSuccess(DocumentReference documentReference) {
-                    Toast.makeText(TransactionFormActivity.this, "Transacción registrada en tiempo real", Toast.LENGTH_SHORT).show();
-                    finish();
-                }
-            }, new OnFailureListener() {
-                @Override
-                public void onFailure(@NonNull Exception e) {
-                    setLoadingState(false);
-                    Toast.makeText(TransactionFormActivity.this, "Error al guardar: " + e.getMessage(), Toast.LENGTH_LONG).show();
-                }
+            firestoreManager.addTransaction(transaction, ref -> {
+                NotificationHelper.notifyTransactionSaved(this, false, transaction.getConcepto(), formattedAmount);
+                Toast.makeText(TransactionFormActivity.this, "Transacción registrada en tiempo real", Toast.LENGTH_SHORT).show();
+                finish();
+            }, e -> {
+                setLoadingState(false);
+                Toast.makeText(TransactionFormActivity.this, "Error al guardar: " + e.getMessage(), Toast.LENGTH_LONG).show();
             });
         }
     }
 
     private void confirmDelete() {
+        // Doble verificación del rol (además de ocultar el botón y de las reglas de Firestore)
+        if (!session.isAdmin()) {
+            Toast.makeText(this, R.string.delete_admin_only, Toast.LENGTH_SHORT).show();
+            return;
+        }
         new AlertDialog.Builder(this)
                 .setTitle("Confirmar eliminación")
                 .setMessage(R.string.confirm_delete)
-                .setPositiveButton("Sí, eliminar", new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        deleteTransaction();
-                    }
-                })
+                .setPositiveButton("Sí, eliminar", (dialog, which) -> deleteTransaction())
                 .setNegativeButton("Cancelar", null)
                 .show();
     }
 
     private void deleteTransaction() {
         setLoadingState(true);
-        firestoreManager.deleteTransaction(documentId, new OnSuccessListener<Void>() {
-            @Override
-            public void onSuccess(Void unused) {
-                Toast.makeText(TransactionFormActivity.this, "Transacción eliminada de Firestore", Toast.LENGTH_SHORT).show();
-                finish();
-            }
-        }, new OnFailureListener() {
-            @Override
-            public void onFailure(@NonNull Exception e) {
-                setLoadingState(false);
-                Toast.makeText(TransactionFormActivity.this, "Error al eliminar: " + e.getMessage(), Toast.LENGTH_LONG).show();
-            }
+        final String imagePath = originalTransaction != null ? originalTransaction.getImagePath() : null;
+        firestoreManager.deleteTransaction(documentId, unused -> {
+            storageManager.deleteFile(imagePath);
+            Toast.makeText(TransactionFormActivity.this, "Transacción eliminada de Firestore", Toast.LENGTH_SHORT).show();
+            finish();
+        }, e -> {
+            setLoadingState(false);
+            Toast.makeText(TransactionFormActivity.this, "Error al eliminar: " + e.getMessage(), Toast.LENGTH_LONG).show();
         });
     }
 
     private void setLoadingState(boolean isLoading) {
-        if (isLoading) {
-            btnSave.setEnabled(false);
-            btnDelete.setEnabled(false);
-            if (progressBarForm != null) {
-                progressBarForm.setVisibility(View.VISIBLE);
-            }
-        } else {
-            btnSave.setEnabled(true);
-            btnDelete.setEnabled(true);
-            if (progressBarForm != null) {
-                progressBarForm.setVisibility(View.GONE);
-            }
+        btnSave.setEnabled(!isLoading);
+        btnDelete.setEnabled(!isLoading);
+        btnCamera.setEnabled(!isLoading);
+        btnGallery.setEnabled(!isLoading);
+        if (progressBarForm != null) {
+            progressBarForm.setVisibility(isLoading ? View.VISIBLE : View.GONE);
         }
+    }
+
+    private static String textOf(TextInputEditText field) {
+        return field.getText() != null ? field.getText().toString() : "";
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        ioExecutor.shutdown();
     }
 }

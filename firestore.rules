@@ -1,0 +1,68 @@
+rules_version = '2';
+
+// =============================================================================
+// Mis Finanzas - Reglas de seguridad de Cloud Firestore (Momento 3)
+//
+// RBAC aplicado en el SERVIDOR (no basta con ocultar botones en la app):
+//  - Administrador ("admin"): lee y edita todas las transacciones y es el único
+//    que puede eliminarlas.
+//  - Estándar ("estandar"): solo lee, crea y edita SUS transacciones.
+//  - Nadie puede asignarse el rol de administrador a sí mismo.
+//
+// Cómo publicarlas: Consola de Firebase -> Firestore Database -> Reglas ->
+// pegar este archivo -> Publicar.
+// =============================================================================
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.rol == 'admin';
+    }
+
+    // ---------------------------------------------------------------------
+    // Perfiles de usuario con su rol
+    // ---------------------------------------------------------------------
+    match /usuarios/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+
+      // Al registrarse, cada usuario crea su propio perfil y SIEMPRE como "estandar"
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.rol == 'estandar';
+
+      // El dueño puede actualizar su perfil (p. ej. token FCM) pero no cambiar su rol
+      allow update: if isAdmin()
+        || (signedIn() && request.auth.uid == uid
+            && request.resource.data.rol == resource.data.rol);
+
+      allow delete: if isAdmin();
+    }
+
+    // ---------------------------------------------------------------------
+    // Transacciones
+    // ---------------------------------------------------------------------
+    match /transacciones/{id} {
+      allow read: if isAdmin()
+        || (signedIn() && resource.data.userId == request.auth.uid);
+
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.monto is number
+        && request.resource.data.monto > 0;
+
+      // El dueño edita lo suyo sin poder cambiar el dueño; el admin edita todo
+      allow update: if isAdmin()
+        || (signedIn()
+            && resource.data.userId == request.auth.uid
+            && request.resource.data.userId == request.auth.uid);
+
+      // Solo el Administrador elimina
+      allow delete: if isAdmin();
+    }
+  }
+}

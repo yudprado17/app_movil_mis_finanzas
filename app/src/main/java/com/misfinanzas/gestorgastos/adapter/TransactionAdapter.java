@@ -12,6 +12,8 @@ import androidx.annotation.NonNull;
 import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.bumptech.glide.Glide;
+import com.bumptech.glide.load.engine.DiskCacheStrategy;
 import com.misfinanzas.gestorgastos.R;
 import com.misfinanzas.gestorgastos.model.Transaction;
 
@@ -30,6 +32,7 @@ public class TransactionAdapter extends RecyclerView.Adapter<TransactionAdapter.
     private final NumberFormat currencyFormatter;
     private final SimpleDateFormat inputDateFormat;
     private final SimpleDateFormat outputDateFormat;
+    private boolean showOwner = false;
 
     public interface OnItemClickListener {
         void onItemClick(Transaction transaction);
@@ -57,6 +60,17 @@ public class TransactionAdapter extends RecyclerView.Adapter<TransactionAdapter.
         holder.bind(transaction, listener);
     }
 
+    /**
+     * Prevención del bug de reciclaje: cuando una tarjeta sale de la pantalla
+     * se cancela la carga pendiente de Glide para que la imagen no aparezca
+     * luego en otra tarjeta reutilizada.
+     */
+    @Override
+    public void onViewRecycled(@NonNull TransactionViewHolder holder) {
+        super.onViewRecycled(holder);
+        Glide.with(context).clear(holder.ivReceipt);
+    }
+
     @Override
     public int getItemCount() {
         return transactionList.size();
@@ -67,12 +81,21 @@ public class TransactionAdapter extends RecyclerView.Adapter<TransactionAdapter.
         notifyDataSetChanged();
     }
 
+    /** RBAC: el Administrador ve el correo del dueño de cada transacción. */
+    public void setShowOwner(boolean showOwner) {
+        this.showOwner = showOwner;
+        notifyDataSetChanged();
+    }
+
     class TransactionViewHolder extends RecyclerView.ViewHolder {
         private final TextView tvConcept;
         private final TextView tvCategory;
         private final TextView tvDate;
         private final TextView tvAmount;
+        private final TextView tvAddress;
+        private final TextView tvOwner;
         private final ImageView ivTransactionIcon;
+        private final ImageView ivReceipt;
         private final FrameLayout layoutIconContainer;
 
         public TransactionViewHolder(@NonNull View itemView) {
@@ -81,14 +104,17 @@ public class TransactionAdapter extends RecyclerView.Adapter<TransactionAdapter.
             tvCategory = itemView.findViewById(R.id.tv_category);
             tvDate = itemView.findViewById(R.id.tv_date);
             tvAmount = itemView.findViewById(R.id.tv_amount);
+            tvAddress = itemView.findViewById(R.id.tv_address);
+            tvOwner = itemView.findViewById(R.id.tv_owner);
             ivTransactionIcon = itemView.findViewById(R.id.iv_transaction_icon);
+            ivReceipt = itemView.findViewById(R.id.iv_receipt);
             layoutIconContainer = itemView.findViewById(R.id.layout_icon_container);
         }
 
         public void bind(final Transaction transaction, final OnItemClickListener listener) {
             tvConcept.setText(transaction.getConcepto());
             tvCategory.setText(transaction.getCategoria());
-            
+
             // Formatear Fecha
             String formattedDate = transaction.getFecha();
             if (formattedDate != null) {
@@ -111,24 +137,61 @@ public class TransactionAdapter extends RecyclerView.Adapter<TransactionAdapter.
                 layoutIconContainer.setBackgroundResource(R.drawable.bg_round_income);
                 ivTransactionIcon.setImageResource(R.drawable.ic_income);
                 ivTransactionIcon.setColorFilter(ContextCompat.getColor(context, R.color.income));
-                
+
                 tvAmount.setTextColor(ContextCompat.getColor(context, R.color.income));
                 tvAmount.setText("+ " + formattedAmount);
             } else {
                 layoutIconContainer.setBackgroundResource(R.drawable.bg_round_expense);
                 ivTransactionIcon.setImageResource(R.drawable.ic_expense);
                 ivTransactionIcon.setColorFilter(ContextCompat.getColor(context, R.color.expense));
-                
+
                 tvAmount.setTextColor(ContextCompat.getColor(context, R.color.expense));
                 tvAmount.setText("- " + formattedAmount);
             }
 
-            itemView.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    listener.onItemClick(transaction);
-                }
-            });
+            // =================================================================
+            // PILAR B: Renderizado eficiente con Glide
+            //  - placeholder(): imagen por defecto mientras descarga
+            //  - error(): imagen si la URL falla o no hay conexión
+            //  - diskCacheStrategy(ALL): caché local en disco (no se re-descarga)
+            //  - Siempre se asigna algo (o se limpia) para evitar el bug de reciclaje
+            // =================================================================
+            if (transaction.hasImage()) {
+                ivReceipt.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                ivReceipt.setPadding(0, 0, 0, 0);
+                Glide.with(context)
+                        .load(transaction.getImageUrl())
+                        .placeholder(R.drawable.ic_receipt)
+                        .error(R.drawable.ic_broken_image)
+                        .diskCacheStrategy(DiskCacheStrategy.ALL)
+                        .centerCrop()
+                        .into(ivReceipt);
+            } else {
+                Glide.with(context).clear(ivReceipt);
+                int pad = (int) (14 * context.getResources().getDisplayMetrics().density);
+                ivReceipt.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                ivReceipt.setPadding(pad, pad, pad, pad);
+                ivReceipt.setImageResource(R.drawable.ic_receipt);
+            }
+
+            // Dirección (geocodificación inversa)
+            if (transaction.getDireccion() != null && !transaction.getDireccion().isEmpty()) {
+                tvAddress.setText(transaction.getDireccion());
+                tvAddress.setVisibility(View.VISIBLE);
+            } else {
+                tvAddress.setVisibility(View.GONE);
+            }
+
+            // Dueño (solo Administrador)
+            if (showOwner) {
+                String owner = transaction.getUserEmail() != null ? transaction.getUserEmail() : "Sin dueño (Momento 2)";
+                tvOwner.setText(owner);
+                tvOwner.setVisibility(View.VISIBLE);
+            } else {
+                tvOwner.setVisibility(View.GONE);
+            }
+
+            itemView.setOnClickListener(v -> listener.onItemClick(transaction));
         }
     }
 }

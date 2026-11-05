@@ -1,0 +1,34 @@
+rules_version = '2';
+
+// =============================================================================
+// Mis Finanzas - Reglas de seguridad de Firebase Storage (Momento 3)
+//
+// Fotos de comprobantes en: comprobantes/{uid}/{archivo}.jpg
+//  - Cualquier usuario autenticado puede verlas (el Administrador ve las de todos).
+//  - Cada usuario solo sube fotos a SU carpeta, solo imágenes y de máximo 5 MB.
+//  - Borra el dueño de la carpeta o un Administrador.
+//
+// Cómo publicarlas: Consola de Firebase -> Storage -> Reglas -> pegar este
+// archivo -> Publicar. (La consola pedirá permiso para que Storage consulte el
+// rol en Firestore: acéptalo.)
+// =============================================================================
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isAdmin() {
+      return firestore.get(/databases/(default)/documents/usuarios/$(request.auth.uid)).data.rol == 'admin';
+    }
+
+    match /comprobantes/{uid}/{fileName} {
+      allow read: if request.auth != null;
+
+      allow create, update: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+
+      allow delete: if request.auth != null
+        && (request.auth.uid == uid || isAdmin());
+    }
+  }
+}

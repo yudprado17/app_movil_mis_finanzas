@@ -10,33 +10,53 @@ import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.firestore.ListenerRegistration;
 import com.google.firebase.firestore.Query;
 import com.google.firebase.firestore.QuerySnapshot;
+import com.google.firebase.firestore.SetOptions;
 import com.misfinanzas.gestorgastos.model.Transaction;
+import com.misfinanzas.gestorgastos.model.Usuario;
+
+import java.util.Collections;
 
 public class FirestoreManager {
 
     private static final String COLLECTION_NAME = "transacciones";
+    private static final String USERS_COLLECTION = "usuarios";
     private final FirebaseFirestore db;
     private final CollectionReference collectionRef;
+    private final CollectionReference usersRef;
 
     public FirestoreManager() {
         this.db = FirebaseFirestore.getInstance();
         this.collectionRef = db.collection(COLLECTION_NAME);
+        this.usersRef = db.collection(USERS_COLLECTION);
     }
 
     // =========================================================================
-    // 1. ESCUCHA EN TIEMPO REAL (Real-time SnapshotListener)
+    // 1. ESCUCHA EN TIEMPO REAL (Real-time SnapshotListener) con RBAC
     // =========================================================================
     /**
-     * Registra un listener en tiempo real para obtener los documentos de la colección
-     * ordenados por fecha de forma descendente.
-     * 
-     * @param listener Callback de escucha para eventos de cambio en Firestore.
+     * Registra un listener en tiempo real sobre las transacciones visibles para el rol:
+     *  - Administrador: todas las transacciones de todos los usuarios.
+     *  - Estándar: solo las transacciones cuyo userId es el suyo.
+     *
+     * El orden por fecha se aplica en la app (no en la consulta) para no requerir
+     * un índice compuesto en Firestore al combinar whereEqualTo + orderBy.
+     *
      * @return ListenerRegistration para poder desregistrar en onDestroy() y evitar memory leaks.
      */
-    public ListenerRegistration listenToTransactions(EventListener<QuerySnapshot> listener) {
-        return collectionRef
-                .orderBy("fecha", Query.Direction.DESCENDING)
-                .addSnapshotListener(listener);
+    public ListenerRegistration listenToTransactions(boolean isAdmin, String uid, EventListener<QuerySnapshot> listener) {
+        Query query = isAdmin
+                ? collectionRef
+                : collectionRef.whereEqualTo("userId", uid);
+        return query.addSnapshotListener(listener);
+    }
+
+    /** Ordena una lista de transacciones por fecha descendente (más recientes primero). */
+    public static void sortByDateDesc(java.util.List<Transaction> list) {
+        Collections.sort(list, (a, b) -> {
+            String fa = a.getFecha() != null ? a.getFecha() : "";
+            String fb = b.getFecha() != null ? b.getFecha() : "";
+            return fb.compareTo(fa);
+        });
     }
 
     // =========================================================================
@@ -73,5 +93,26 @@ public class FirestoreManager {
         collectionRef.document(id).delete()
                 .addOnSuccessListener(successListener)
                 .addOnFailureListener(failureListener);
+    }
+
+    // =========================================================================
+    // 6. PERFILES DE USUARIO (Colección "usuarios/{uid}" con el rol para RBAC)
+    // =========================================================================
+    public void getUser(String uid, OnSuccessListener<DocumentSnapshot> successListener, OnFailureListener failureListener) {
+        usersRef.document(uid).get()
+                .addOnSuccessListener(successListener)
+                .addOnFailureListener(failureListener);
+    }
+
+    public void createUser(Usuario usuario, OnSuccessListener<Void> successListener, OnFailureListener failureListener) {
+        usersRef.document(usuario.getUid()).set(usuario)
+                .addOnSuccessListener(successListener)
+                .addOnFailureListener(failureListener);
+    }
+
+    /** Guarda el token FCM del dispositivo en el perfil (útil para enviar push dirigidos). */
+    public void saveFcmToken(String uid, String token) {
+        usersRef.document(uid)
+                .set(Collections.singletonMap("fcmToken", token), SetOptions.merge());
     }
 }

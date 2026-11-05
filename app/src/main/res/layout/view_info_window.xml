@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ventana de información contextual (InfoWindow) que aparece al tocar un pin -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="240dp"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_search_input"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+    <TextView
+        android:id="@+id/tv_info_concept"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:textColor="@color/text_primary"
+        android:textSize="15sp"
+        android:textStyle="bold"
+        tools:text="Almuerzo de negocios" />
+
+    <TextView
+        android:id="@+id/tv_info_amount"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        tools:text="- $45,000.00"
+        tools:textColor="@color/expense" />
+
+    <TextView
+        android:id="@+id/tv_info_details"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:textColor="@color/text_secondary"
+        android:textSize="12sp"
+        tools:text="Alimentación • 2026-11-05" />
+
+    <TextView
+        android:id="@+id/tv_info_address"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:maxLines="2"
+        android:textColor="@color/text_secondary"
+        android:textSize="12sp"
+        tools:text="Cra. 7 #32-16, Teusaquillo, Bogotá" />
+
+    <TextView
+        android:id="@+id/tv_info_owner"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:textColor="@color/primary"
+        android:textSize="11sp"
+        android:visibility="gone"
+        tools:text="usuario@misfinanzas.com"
+        tools:visibility="visible" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:text="Toca para ver el detalle"
+        android:textColor="@color/primary"
+        android:textSize="11sp"
+        android:textStyle="italic" />
+</LinearLayout>
