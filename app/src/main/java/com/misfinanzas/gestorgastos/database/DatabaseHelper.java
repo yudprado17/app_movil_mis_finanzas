@@ -78,7 +78,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         if (cursor.moveToFirst()) {
             do {
                 Transaction transaction = new Transaction();
-                transaction.setId(cursor.getInt(cursor.getColumnIndexOrThrow(COLUMN_ID)));
+                transaction.setId(String.valueOf(cursor.getInt(cursor.getColumnIndexOrThrow(COLUMN_ID))));
                 transaction.setConcepto(cursor.getString(cursor.getColumnIndexOrThrow(COLUMN_CONCEPTO)));
                 transaction.setMonto(cursor.getDouble(cursor.getColumnIndexOrThrow(COLUMN_MONTO)));
                 transaction.setTipo(cursor.getString(cursor.getColumnIndexOrThrow(COLUMN_TIPO)));
@@ -108,7 +108,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         if (cursor.moveToFirst()) {
             do {
                 Transaction transaction = new Transaction();
-                transaction.setId(cursor.getInt(cursor.getColumnIndexOrThrow(COLUMN_ID)));
+                transaction.setId(String.valueOf(cursor.getInt(cursor.getColumnIndexOrThrow(COLUMN_ID))));
                 transaction.setConcepto(cursor.getString(cursor.getColumnIndexOrThrow(COLUMN_CONCEPTO)));
                 transaction.setMonto(cursor.getDouble(cursor.getColumnIndexOrThrow(COLUMN_MONTO)));
                 transaction.setTipo(cursor.getString(cursor.getColumnIndexOrThrow(COLUMN_TIPO)));
@@ -136,7 +136,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
         if (cursor != null && cursor.moveToFirst()) {
             transaction = new Transaction();
-            transaction.setId(cursor.getInt(cursor.getColumnIndexOrThrow(COLUMN_ID)));
+            transaction.setId(String.valueOf(cursor.getInt(cursor.getColumnIndexOrThrow(COLUMN_ID))));
             transaction.setConcepto(cursor.getString(cursor.getColumnIndexOrThrow(COLUMN_CONCEPTO)));
             transaction.setMonto(cursor.getDouble(cursor.getColumnIndexOrThrow(COLUMN_MONTO)));
             transaction.setTipo(cursor.getString(cursor.getColumnIndexOrThrow(COLUMN_TIPO)));
