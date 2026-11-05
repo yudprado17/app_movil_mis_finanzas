@@ -264,7 +264,7 @@
                     app:strokeColor="@color/primary" />
             </LinearLayout>
 
-            <!-- Progreso de subida a Firebase Storage -->
+            <!-- Progreso de preparación y subida de la foto a Firestore -->
             <LinearLayout
                 android:id="@+id/layout_upload_progress"
                 android:layout_width="match_parent"

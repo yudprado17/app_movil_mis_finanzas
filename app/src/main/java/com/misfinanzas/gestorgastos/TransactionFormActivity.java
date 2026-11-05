@@ -47,7 +47,7 @@ import com.google.android.gms.tasks.CancellationTokenSource;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
 import com.misfinanzas.gestorgastos.database.FirestoreManager;
-import com.misfinanzas.gestorgastos.database.StorageManager;
+import com.misfinanzas.gestorgastos.database.ReceiptImageStore;
 import com.misfinanzas.gestorgastos.model.Transaction;
 import com.misfinanzas.gestorgastos.notifications.NotificationHelper;
 import com.misfinanzas.gestorgastos.session.SessionManager;
@@ -97,7 +97,6 @@ public class TransactionFormActivity extends AppCompatActivity {
     private ProgressBar progressLocation;
 
     private FirestoreManager firestoreManager;
-    private StorageManager storageManager;
     private SessionManager session;
     private FusedLocationProviderClient fusedLocationClient;
     private final ExecutorService ioExecutor = Executors.newSingleThreadExecutor();
@@ -168,7 +167,6 @@ public class TransactionFormActivity extends AppCompatActivity {
 
         // Inicializar servicios
         firestoreManager = new FirestoreManager();
-        storageManager = new StorageManager();
         session = new SessionManager(this);
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
 
@@ -468,7 +466,7 @@ public class TransactionFormActivity extends AppCompatActivity {
         renderReceiptPreview();
     }
 
-    /** Muestra la foto nueva (local) o la existente (URL de Storage) con Glide. */
+    /** Muestra la foto nueva (local) o la existente (guardada en Firestore) con Glide. */
     private void renderReceiptPreview() {
         Object source = null;
         if (selectedImageUri != null) {
@@ -606,7 +604,7 @@ public class TransactionFormActivity extends AppCompatActivity {
     }
 
     // =========================================================================
-    // GUARDAR: validar -> (subir foto a Storage) -> guardar en Firestore -> notificar
+    // GUARDAR: validar -> (preparar foto) -> guardar en Firestore -> notificar
     // =========================================================================
     private void saveTransaction() {
         String concept = textOf(tietConcept).trim();
@@ -680,95 +678,91 @@ public class TransactionFormActivity extends AppCompatActivity {
         transaction.setDireccion(currentLat != null ? currentAddress : null);
 
         // Comprobante: se conserva el existente salvo que se quite o se reemplace
-        String oldImagePath = isEditMode ? originalTransaction.getImagePath() : null;
         if (isEditMode && !removeImage) {
             transaction.setImageUrl(originalTransaction.getImageUrl());
-            transaction.setImagePath(originalTransaction.getImagePath());
         }
 
         if (selectedImageUri != null) {
-            uploadImageThenPersist(transaction, oldImagePath);
+            prepareImageThenPersist(transaction);
         } else {
-            persist(transaction, removeImage ? oldImagePath : null);
+            persist(transaction);
         }
     }
 
-    /** PILAR B: sube la foto a Firebase Storage mostrando el progreso. */
-    private void uploadImageThenPersist(Transaction transaction, String oldImagePath) {
+    /**
+     * PILAR B: prepara la foto (compresión + Base64) mostrando el progreso y la
+     * guarda en el documento de Firestore (plan gratuito, sin Firebase Storage).
+     */
+    private void prepareImageThenPersist(Transaction transaction) {
         layoutUploadProgress.setVisibility(View.VISIBLE);
         progressUpload.setProgress(0);
         tvUploadProgress.setText("Preparando foto...");
 
-        final Uri uri = selectedImageUri;
-        ioExecutor.execute(() -> {
-            byte[] bytes;
-            try {
-                bytes = ImageUtils.compressForUpload(getApplicationContext(), uri);
-            } catch (Exception e) {
-                mainHandler.post(() -> onUploadFailed(transaction, e));
-                return;
+        ReceiptImageStore.prepare(this, selectedImageUri, ioExecutor, mainHandler, new ReceiptImageStore.Callback() {
+            @Override
+            public void onProgress(int percent, @NonNull String stage) {
+                progressUpload.setProgress(percent);
+                tvUploadProgress.setText(stage);
             }
-            final byte[] data = bytes;
-            mainHandler.post(() -> storageManager.uploadReceipt(session.getUid(), data, new StorageManager.UploadCallback() {
-                @Override
-                public void onProgress(int percent) {
-                    progressUpload.setProgress(percent);
-                    tvUploadProgress.setText("Subiendo foto... " + percent + "%");
-                }
 
-                @Override
-                public void onSuccess(@NonNull String downloadUrl, @NonNull String storagePath) {
-                    tvUploadProgress.setText("Foto subida ✔");
-                    transaction.setImageUrl(downloadUrl);
-                    transaction.setImagePath(storagePath);
-                    persist(transaction, oldImagePath);
-                }
+            @Override
+            public void onReady(@NonNull String dataUri, int jpegBytes) {
+                progressUpload.setProgress(85);
+                tvUploadProgress.setText("Subiendo a la nube... (" + (jpegBytes / 1024) + " KB)");
+                transaction.setImageUrl(dataUri);
+                persist(transaction);
+            }
 
-                @Override
-                public void onError(@NonNull Exception e) {
-                    onUploadFailed(transaction, e);
-                }
-            }));
+            @Override
+            public void onError(@NonNull Exception e) {
+                onImageFailed(transaction, e);
+            }
         });
     }
 
     /**
-     * Tolerancia a fallos: si la foto no se puede subir (sin red, Storage sin
-     * configurar, reglas, etc.) la transacción se guarda igual y se avisa.
+     * Tolerancia a fallos: si la foto no se puede procesar, la transacción se
+     * guarda igual (sin la foto nueva) y se avisa al usuario.
      */
-    private void onUploadFailed(Transaction transaction, Exception e) {
-        Log.e(TAG, "Fallo la subida a Storage", e);
+    private void onImageFailed(Transaction transaction, Exception e) {
+        Log.e(TAG, "No se pudo preparar la foto", e);
         layoutUploadProgress.setVisibility(View.GONE);
-        Toast.makeText(this, "No se pudo subir la foto (" + e.getMessage() + "). La transacción se guardará sin la foto nueva.", Toast.LENGTH_LONG).show();
-        persist(transaction, null);
+        Toast.makeText(this, "No se pudo procesar la foto (" + e.getMessage() + "). La transacción se guardará sin la foto nueva.", Toast.LENGTH_LONG).show();
+        persist(transaction);
     }
 
-    /** Guarda en Firestore y, si hubo éxito, borra la foto anterior y notifica. */
-    private void persist(Transaction transaction, String imagePathToDelete) {
+    /** Guarda en Firestore y, si hubo éxito, notifica. */
+    private void persist(Transaction transaction) {
         final String formattedAmount = NumberFormat.getCurrencyInstance(Locale.US).format(transaction.getMonto());
 
         if (isEditMode) {
             firestoreManager.updateTransaction(documentId, transaction, unused -> {
-                if (imagePathToDelete != null && !imagePathToDelete.equals(transaction.getImagePath())) {
-                    storageManager.deleteFile(imagePathToDelete);
-                }
+                onSavedToCloud();
                 NotificationHelper.notifyTransactionSaved(this, true, transaction.getConcepto(), formattedAmount);
                 Toast.makeText(TransactionFormActivity.this, "Transacción actualizada en la nube", Toast.LENGTH_SHORT).show();
                 finish();
-            }, e -> {
-                setLoadingState(false);
-                Toast.makeText(TransactionFormActivity.this, "Error al actualizar: " + e.getMessage(), Toast.LENGTH_LONG).show();
-            });
+            }, this::onSaveFailed);
         } else {
             firestoreManager.addTransaction(transaction, ref -> {
+                onSavedToCloud();
                 NotificationHelper.notifyTransactionSaved(this, false, transaction.getConcepto(), formattedAmount);
                 Toast.makeText(TransactionFormActivity.this, "Transacción registrada en tiempo real", Toast.LENGTH_SHORT).show();
                 finish();
-            }, e -> {
-                setLoadingState(false);
-                Toast.makeText(TransactionFormActivity.this, "Error al guardar: " + e.getMessage(), Toast.LENGTH_LONG).show();
-            });
+            }, this::onSaveFailed);
         }
+    }
+
+    private void onSavedToCloud() {
+        if (layoutUploadProgress.getVisibility() == View.VISIBLE) {
+            progressUpload.setProgress(100);
+            tvUploadProgress.setText("Foto guardada en la nube ✔");
+        }
+    }
+
+    private void onSaveFailed(Exception e) {
+        setLoadingState(false);
+        layoutUploadProgress.setVisibility(View.GONE);
+        Toast.makeText(TransactionFormActivity.this, "Error al guardar: " + e.getMessage(), Toast.LENGTH_LONG).show();
     }
 
     private void confirmDelete() {
@@ -787,9 +781,8 @@ public class TransactionFormActivity extends AppCompatActivity {
 
     private void deleteTransaction() {
         setLoadingState(true);
-        final String imagePath = originalTransaction != null ? originalTransaction.getImagePath() : null;
+        // La foto vive dentro del documento, así que se elimina junto con él
         firestoreManager.deleteTransaction(documentId, unused -> {
-            storageManager.deleteFile(imagePath);
             Toast.makeText(TransactionFormActivity.this, "Transacción eliminada de Firestore", Toast.LENGTH_SHORT).show();
             finish();
         }, e -> {

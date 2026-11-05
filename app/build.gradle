@@ -57,11 +57,10 @@ dependencies {
     implementation 'androidx.cardview:cardview:1.0.0'
     implementation 'androidx.exifinterface:exifinterface:1.3.7'
 
-    // Firebase (Momento 2: Firestore | Momento 3: Auth, Storage y Cloud Messaging)
+    // Firebase (Momento 2: Firestore | Momento 3: Auth y Cloud Messaging)
     implementation platform('com.google.firebase:firebase-bom:32.7.4')
     implementation 'com.google.firebase:firebase-firestore'
     implementation 'com.google.firebase:firebase-auth'
-    implementation 'com.google.firebase:firebase-storage'
     implementation 'com.google.firebase:firebase-messaging'
 
     // Glide: carga de imágenes con caché (Momento 3)

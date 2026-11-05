@@ -17,9 +17,10 @@ public class Transaction {
     private String userId;
     private String userEmail;
 
-    // ---- Momento 3: comprobante fotográfico en Firebase Storage ----
-    private String imageUrl;   // Download URL pública para Glide
-    private String imagePath;  // Ruta dentro del bucket (para poder borrarla)
+    // ---- Momento 3: comprobante fotográfico ----
+    // Foto comprimida como data URI (data:image/jpeg;base64,...) guardada en el
+    // propio documento de Firestore; Glide la muestra directamente.
+    private String imageUrl;
 
     // ---- Momento 3: geolocalización (null si no se capturó) ----
     private Double latitud;
@@ -135,14 +136,6 @@ public class Transaction {
 
     public void setImageUrl(String imageUrl) {
         this.imageUrl = imageUrl;
-    }
-
-    public String getImagePath() {
-        return imagePath;
-    }
-
-    public void setImagePath(String imagePath) {
-        this.imagePath = imagePath;
     }
 
     public Double getLatitud() {

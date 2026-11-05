@@ -13,20 +13,21 @@ import java.io.IOException;
 import java.io.InputStream;
 
 /**
- * Prepara la foto antes de subirla: la reduce a un tamaño razonable, corrige la
- * rotación de la cámara (EXIF) y la comprime en JPEG. Así la subida es rápida y
- * se gasta menos almacenamiento en Firebase Storage.
+ * Prepara la foto antes de guardarla: la reduce a un tamaño razonable, corrige la
+ * rotación de la cámara (EXIF) y la comprime en JPEG hasta quedar por debajo de un
+ * tamaño máximo (para que quepa en un documento de Cloud Firestore).
  */
 public final class ImageUtils {
 
-    private static final int MAX_SIDE = 1280;
-    private static final int JPEG_QUALITY = 80;
+    private static final int MAX_SIDE = 1024;
+    private static final int START_QUALITY = 80;
+    private static final int MIN_QUALITY = 40;
 
     private ImageUtils() {
     }
 
     /** Debe llamarse en un hilo secundario (lee y procesa el archivo). */
-    public static byte[] compressForUpload(Context context, Uri uri) throws IOException {
+    public static byte[] compressForUpload(Context context, Uri uri, int maxBytes) throws IOException {
         // 1. Leer solo las dimensiones para calcular el factor de reducción
         BitmapFactory.Options bounds = new BitmapFactory.Options();
         bounds.inJustDecodeBounds = true;
@@ -65,10 +66,30 @@ public final class ImageUtils {
         Bitmap result = Bitmap.createBitmap(bitmap, 0, 0, w, h, matrix, true);
         if (result != bitmap) bitmap.recycle();
 
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        result.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out);
-        result.recycle();
-        return out.toByteArray();
+        // 5. Bajar la calidad (y si hace falta, el tamaño) hasta no superar maxBytes
+        int quality = START_QUALITY;
+        while (true) {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            result.compress(Bitmap.CompressFormat.JPEG, quality, out);
+            if (out.size() <= maxBytes) {
+                result.recycle();
+                return out.toByteArray();
+            }
+            if (quality > MIN_QUALITY) {
+                quality -= 10;
+            } else {
+                int nw = Math.round(result.getWidth() * 0.75f);
+                int nh = Math.round(result.getHeight() * 0.75f);
+                if (nw < 160 || nh < 160) {
+                    result.recycle();
+                    throw new IOException("La imagen es demasiado pesada");
+                }
+                Bitmap smaller = Bitmap.createScaledBitmap(result, nw, nh, true);
+                result.recycle();
+                result = smaller;
+                quality = START_QUALITY - 10;
+            }
+        }
     }
 
     private static int readRotation(Context context, Uri uri) {

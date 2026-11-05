@@ -4,7 +4,7 @@ Aplicación nativa para la plataforma Android desarrollada en **Java**, diseñad
 
 **Estudiante:** Yudnaris Maria Prado Robles  
 **Asignatura:** Desarrollo de Aplicaciones Móviles (Android Nativo)  
-**Plataforma:** Android 7.0+ (API level 24+) | Java 17 | Firebase (Auth, Firestore, Storage, Cloud Messaging) | Google Maps SDK  
+**Plataforma:** Android 7.0+ (API level 24+) | Java 17 | Firebase (Auth, Firestore, Cloud Messaging) — todo en el plan gratuito Spark | Google Maps SDK  
 
 ---
 
@@ -40,14 +40,15 @@ Pensada también para pequeños negocios o familias: un **Administrador** superv
 - **Cierre de sesión seguro:** el botón de logout detiene los listeners, invalida el token push, ejecuta `FirebaseAuth.signOut()` (destruye el token), limpia `SharedPreferences`, la caché de imágenes de Glide y las notificaciones, y redirige al Login borrando el historial de pantallas.
 - **Roles (RBAC):** el perfil `usuarios/{uid}` en Firestore tiene el campo `rol` (`admin` / `estandar`).
   - En la interfaz: el Administrador ve la lista global con el dueño de cada registro y el botón **Eliminar**; el Estándar solo ve lo suyo y un aviso de que no puede eliminar.
-  - En el servidor: [`firestore.rules`](firestore.rules) y [`storage.rules`](storage.rules) hacen cumplir los mismos permisos, por lo que no se pueden saltar modificando la app. Nadie puede asignarse el rol de administrador a sí mismo.
+  - En el servidor: [`firestore.rules`](firestore.rules) hace cumplir los mismos permisos, por lo que no se pueden saltar modificando la app. Nadie puede asignarse el rol de administrador a sí mismo.
 
-### B. 🖼️ Datos y Multimedia (Firestore + Storage + Glide)
+### B. 🖼️ Datos y Multimedia (Firestore + Glide)
 - **CRUD en tiempo real** con `addSnapshotListener`, filtrado por rol ([`FirestoreManager.java`](app/src/main/java/com/misfinanzas/gestorgastos/database/FirestoreManager.java)).
 - **Captura multimedia** en [`TransactionFormActivity.java`](app/src/main/java/com/misfinanzas/gestorgastos/TransactionFormActivity.java) con `ActivityResultLauncher`:
   - Cámara: `TakePicture` + `FileProvider`, solicitando el permiso `CAMERA` en tiempo de ejecución (con explicación y acceso a Ajustes si se niega).
   - Galería: selector moderno de fotos `PickVisualMedia`.
-- **Subida a la nube:** la foto se reduce y corrige su rotación ([`ImageUtils.java`](app/src/main/java/com/misfinanzas/gestorgastos/util/ImageUtils.java)), se sube a `comprobantes/{uid}/` en Firebase Storage con **barra de progreso** y se guarda su **Download URL** en la transacción ([`StorageManager.java`](app/src/main/java/com/misfinanzas/gestorgastos/database/StorageManager.java)). Si la subida falla, la transacción se guarda igual y se avisa al usuario.
+- **Subida a la nube:** la foto se reduce y corrige su rotación ([`ImageUtils.java`](app/src/main/java/com/misfinanzas/gestorgastos/util/ImageUtils.java)), se comprime a un máximo de ~250 KB, se codifica en Base64 como *data URI* y se guarda en la nube dentro del documento de la transacción en Cloud Firestore, con **barra de progreso** ([`ReceiptImageStore.java`](app/src/main/java/com/misfinanzas/gestorgastos/database/ReceiptImageStore.java)). Glide carga ese enlace igual que una URL. Si la foto no se puede procesar, la transacción se guarda igual y se avisa al usuario.
+- **¿Por qué no Firebase Storage?** Desde 2024 Firebase Storage exige el plan de pago **Blaze** (con tarjeta y, en Colombia, un prepago). Para que el proyecto tenga **costo cero** se usa Firestore, que funciona en el plan gratuito **Spark** y admite documentos de hasta 1 MiB. Al eliminar una transacción, su foto se elimina con ella.
 - **Renderizado con Glide** en las tarjetas del `RecyclerView` ([`TransactionAdapter.java`](app/src/main/java/com/misfinanzas/gestorgastos/adapter/TransactionAdapter.java)): caché en disco, imagen por defecto (`placeholder`), imagen de error y prevención del bug de reciclaje (`Glide.clear()` en `onViewRecycled` y en tarjetas sin foto).
 
 ### C. 🗺️ Geolocalización y Mapas (GPS + Google Maps SDK)
@@ -126,7 +127,7 @@ app/src/main/java/com/misfinanzas/gestorgastos/
 ├── database/
 │   ├── DatabaseHelper.java          # Persistencia SQLite (Diseño Momento 1)
 │   ├── FirestoreManager.java        # CRUD y tiempo real Firestore filtrado por rol + perfiles de usuario
-│   └── StorageManager.java          # Subida de fotos a Firebase Storage con progreso (Momento 3)
+│   └── ReceiptImageStore.java       # Foto comprimida en Base64 para Firestore, con progreso (Momento 3)
 ├── model/
 │   ├── Transaction.java             # Transacción: dueño, foto, coordenadas y dirección
 │   └── Usuario.java                 # Perfil con rol (admin / estandar)
@@ -147,7 +148,7 @@ app/src/main/java/com/misfinanzas/gestorgastos/
 └── MisFinanzasApp.java              # Application: registro del canal de notificaciones
 ```
 
-Reglas de seguridad en la raíz del proyecto: [`firestore.rules`](firestore.rules) y [`storage.rules`](storage.rules).
+Reglas de seguridad en la raíz del proyecto: [`firestore.rules`](firestore.rules).
 
 ---
 
@@ -159,12 +160,11 @@ Reglas de seguridad en la raíz del proyecto: [`firestore.rules`](firestore.rule
 4. **Consola de Firebase** (proyecto `misfinanzas-8b984`):
    - *Authentication → Sign-in method →* activar **Correo electrónico/contraseña**.
    - *Firestore Database → Reglas →* pegar [`firestore.rules`](firestore.rules) y publicar.
-   - *Storage →* crear el bucket (requiere el plan **Blaze**; el uso de este proyecto entra en la cuota gratuita) y en *Reglas* pegar [`storage.rules`](storage.rules).
 5. **Google Maps:** en Google Cloud Console habilitar *Maps SDK for Android*, crear una clave de API y agregarla en `local.properties` (este archivo no se sube a GitHub):
    ```properties
    MAPS_API_KEY=tu_clave_de_google_maps
    ```
-6. **Cuentas de prueba:** registrar las dos cuentas de la tabla de credenciales desde la app y, en *Firestore → usuarios → (uid del admin)*, cambiar el campo `rol` de `estandar` a `admin`.
+6. **Cuentas de prueba:** crear las dos cuentas de la tabla de credenciales (desde la app o en *Authentication → Usuarios*) y, en *Firestore → usuarios → (uid)*, dejar el campo `rol` en `admin` para el administrador y `estandar` para el usuario.
 7. **Probar push (FCM):** *Firebase → Messaging → Nueva campaña → Notificaciones*, escribir título y texto y enviarla a la app `com.misfinanzas.gestorgastos`.
 
 ---
