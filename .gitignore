@@ -67,6 +67,5 @@ lecciones_aprendidas.md
 *.md
 !README.md
 !docs/DOCUMENTACION_MOMENTO_2.md
-# Firebase Credentials (Exclusivo local)
-google-services.json
-app/google-services.json
+# Firebase: app/google-services.json SI se versiona (Momento 3) para que el
+# proyecto compile al clonarlo. La seguridad la dan firestore.rules y storage.rules.

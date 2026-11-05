@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "692255828754",
+    "project_id": "misfinanzas-8b984",
+    "storage_bucket": "misfinanzas-8b984.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:692255828754:android:53cfaeac8351ff151921cb",
+        "android_client_info": {
+          "package_name": "com.misfinanzas.gestorgastos"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDbGgjjoIwI_0ADuOrtwnKIB3XJRC9GThY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
